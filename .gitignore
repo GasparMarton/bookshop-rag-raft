@@ -36,3 +36,5 @@ hs_err*
 
 /chart/
 .reloadtrigger
+
+gutenberg_raw.csv

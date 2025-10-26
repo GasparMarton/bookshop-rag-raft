@@ -1,16 +1,41 @@
-### Trigger BusinessPartner.Changed event through S/4 mock
 
-PATCH http://localhost:8080/api/API_BUSINESS_PARTNER/A_BusinessPartnerAddress(BusinessPartner='10401010',AddressID='200')
+
+
+### AdminService - Examples for Authors / Books
+
+### 1) Search Authors by name (OData $filter)
+GET http://localhost:8080/api/admin/Authors?$filter=name%20eq%20%27Jane%20Austen%27 HTTP/1.1
+Authorization: Basic YWRtaW46YWRtaW4=
+Accept: application/json
+
+
+### 2) Create an Author (returns representation when server honors Prefer: return=representation)
+POST http://localhost:8080/api/admin/Authors
 Content-Type: application/json
-Authorization: Basic authenticated:
-
-{"HouseNumber": "30"}
-
-### Subscribe t1 tenant, in local-mtxs
-
-POST http://localhost:4005/-/cds/deployment/subscribe HTTP/1.1
-Content-Type: application/json
+Prefer: return=representation
+Authorization: Basic <base64-credentials>  # or: Authorization: Bearer <token>
 
 {
-  "tenant": "t1"
+  "name": "Jane Austen",
+  "dateOfBirth": "1775-12-16"
 }
+
+
+### 3) Create a Book linking to an Author using OData navigation binding
+POST http://localhost:8080/api/admin/Books
+Content-Type: application/json
+Prefer: return=representation
+Authorization: Basic <base64-credentials>  # or: Authorization: Bearer <token>
+
+{
+  "title": "Pride and Prejudice",
+  "descr": "Classic novel",
+  "fullText": "<trimmed or sample text>",
+  "author@odata.bind": "/Authors('<AUTHOR_ID>')"
+}
+
+
+### 4) Helper: fetch latest author (top=1 orderby ID desc) - useful if create doesn't return ID
+DELETE http://localhost:8080/api/admin/Authors(ed761076-2618-4c6c-9dc4-70d33334957c)
+Authorization: Basic YWRtaW46YWRtaW4=
+
