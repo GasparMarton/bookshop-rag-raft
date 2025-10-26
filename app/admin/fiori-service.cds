@@ -54,6 +54,7 @@ annotate AdminService.Books with @(UI : {
             Value : currency_code,
             Label : '{i18n>Currency}'
         },
+        {Value : fullText}
     ]},
     FieldGroup #Admin : {Data : [
         {Value : createdBy},
@@ -250,3 +251,8 @@ annotate AdminService.Books actions {
 
 // Hides technical field up__ID in View Setitings dialog for Books.covers
 annotate AdminService.Books.covers:up_ with @UI.Hidden;
+
+// Render fullText as a multiline editor on the Books.texts projection
+annotate AdminService.Books with {
+    fullText @UI.MultiLineText;
+};

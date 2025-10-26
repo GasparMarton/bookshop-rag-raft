@@ -19,6 +19,7 @@ entity Books : cuid, managed {
                        on reviews.book = $self;
     isReviewable : TechnicalBooleanFlag not null default true;
     contents     : Composition of many Contents on contents.book = $self @odata.contained:false;
+    fullText         : LargeString;
 }
 
 entity Authors : cuid, managed {
