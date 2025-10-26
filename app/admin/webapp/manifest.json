@@ -129,6 +129,17 @@
                                     }
                                 }
                             }
+                        ,
+                            "content": {
+                                "header": {
+                                    "actions": {
+                                        "fullTextUpload": {
+                                            "press": "admin.extension.FullTextUpload.showUploadDialog",
+                                            "text": "Upload Full Text"
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 },
