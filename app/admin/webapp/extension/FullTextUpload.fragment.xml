@@ -1,0 +1,16 @@
+<core:FragmentDefinition xmlns="sap.m" xmlns:core="sap.ui.core" xmlns:u="sap.ui.unified">
+    <Dialog id="fullTextUploadDialog" title="Upload Full Text" class="sapUiResponsiveContentPadding" beforeOpen=".onBeforeOpen" afterOpen=".onAfterOpen" afterClose=".onAfterClose">
+        <content>
+            <VBox class="sapUiSmallMargin">
+                <u:FileUploader id="fullTextUploader" name="file" placeholder="Select a .txt file" width="100%" fileType="txt" change=".onFileChange" useMultipart="false" />
+                <Text id="fullTextNote" text="The file contents will be loaded into the Full Text field of the book." />
+            </VBox>
+        </content>
+        <beginButton>
+            <Button id="okButton" text="OK" press=".onOk" enabled="false"/>
+        </beginButton>
+        <endButton>
+            <Button text="Cancel" press=".onCancel" />
+        </endButton>
+    </Dialog>
+</core:FragmentDefinition>
