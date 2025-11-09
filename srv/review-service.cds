@@ -9,7 +9,8 @@ service ReviewService {
         projection on my.Books
         excluding {
             createdBy,
-            modifiedBy
+            modifiedBy,
+            embedding
         }
 
     @readonly

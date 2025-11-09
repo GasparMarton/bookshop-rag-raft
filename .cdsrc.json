@@ -2,7 +2,16 @@
     "requires": {
         "multitenancy": true,
         "extensibility": true,
-        "toggles": true
+        "toggles": true,
+        "outbox": {
+            "kind": "persistent-outbox"
+        },
+        "db": {
+            "[production]": {
+                "kind": "hana",
+                "model": "db-hana"
+            }
+        }
     },
     "profile": "with-mtx-sidecar",
     "odata": {

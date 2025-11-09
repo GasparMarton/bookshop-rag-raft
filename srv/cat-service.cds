@@ -6,7 +6,8 @@ service CatalogService @(requires: 'any') {
     @readonly
     entity Books       as projection on my.Books excluding {
         createdBy,
-        modifiedBy
+        modifiedBy,
+        embedding
     } actions {
         action addReview(rating : Integer, title : String, text : String) returns Reviews;
     };
@@ -22,6 +23,29 @@ service CatalogService @(requires: 'any') {
     action submitOrder(book : Books : ID, quantity : Integer) returns {
         stock : Integer
     };
+
+    type ChatResultBook {
+        ID             : UUID;
+        title          : localized String(111);
+        descr          : localized String(1111);
+        author_ID      : UUID;
+        author_name    : String(111);
+        genre_ID       : UUID;
+        genre_name     : String(255);
+        stock          : Integer;
+        price          : Decimal(9, 2);
+        currency_code  : String(3);
+        rating         : Decimal(2, 1);
+    }
+
+    type ChatResult : {
+        reply : String;
+        books : many ChatResultBook;
+    };
+    
+    // Conversational action: always returns text; may also return matching books
+    // 'history' is a JSON string of [{ role: 'user'|'assistant', content: String }]
+    action chat(message : String, history : String) returns ChatResult;
 
     // access control restrictions
     annotate Reviews with @restrict : [
