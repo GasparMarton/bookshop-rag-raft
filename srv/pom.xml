@@ -230,7 +230,7 @@
 						</goals>
 						<configuration>
 							<commands>
-								<command>build --for java</command>
+								<command>build --production --for java</command>
 								<command>compile srv/cat-service.cds -2 openapi --openapi:url /api/browse &gt;
 									"${project.basedir}/src/main/resources/swagger/openapi.json"</command>
 							</commands>

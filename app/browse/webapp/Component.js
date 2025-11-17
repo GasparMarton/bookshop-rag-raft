@@ -14,6 +14,16 @@ sap.ui.define([
       try {
         if (Widget && Widget.init) { Widget.init(); }
       } catch (e) { /* ignore */ }
+    },
+    exit: function () {
+      if (AppComponent.prototype.exit) {
+        AppComponent.prototype.exit.apply(this, arguments);
+      }
+      try {
+        if (Widget && Widget.destroy) {
+          Widget.destroy();
+        }
+      } catch (e) { /* ignore */ }
     }
   });
 });

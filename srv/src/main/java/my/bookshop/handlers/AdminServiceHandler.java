@@ -14,10 +14,8 @@ import cds.gen.adminservice.OrderItems_;
 import cds.gen.adminservice.Orders;
 import cds.gen.adminservice.Upload;
 import cds.gen.adminservice.Upload_;
-import cds.gen.my.bookshop.Bookshop_;
 import com.sap.cds.ql.Select;
 import com.sap.cds.ql.Update;
-import com.sap.cds.ql.Upsert;
 import com.sap.cds.ql.cqn.CqnAnalyzer;
 import com.sap.cds.ql.cqn.CqnStructuredTypeRef;
 import com.sap.cds.reflect.CdsModel;
@@ -34,7 +32,6 @@ import com.sap.cds.services.handler.annotations.Before;
 import com.sap.cds.services.handler.annotations.On;
 import com.sap.cds.services.handler.annotations.ServiceName;
 import com.sap.cds.services.messages.Messages;
-import com.sap.cds.services.persistence.PersistenceService;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -45,7 +42,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
+import jakarta.annotation.PostConstruct;
 import my.bookshop.MessageKeys;
+import my.bookshop.rag.BookEmbeddingService;
+import my.bookshop.repository.bookshop.BookshopBooksRepository;
+import my.bookshop.repository.bookshop.OrderItemsRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -57,17 +59,28 @@ import org.springframework.stereotype.Component;
 @ServiceName(AdminService_.CDS_NAME)
 class AdminServiceHandler implements EventHandler {
 
-	private final AdminService.Draft adminService;
-	private final PersistenceService db;
-	private final Messages messages;
-	private final CqnAnalyzer analyzer;
+	@Autowired
+	private AdminService.Draft adminService;
 
-	AdminServiceHandler(AdminService.Draft adminService, PersistenceService db, Messages messages, CdsModel model) {
-		this.adminService = adminService;
-		this.db = db;
-		this.messages = messages;
+	@Autowired
+	private Messages messages;
 
-		// model is a tenant-dependant model proxy
+	@Autowired
+	private CdsModel model;
+
+	@Autowired
+	private BookEmbeddingService embeddingService;
+
+	@Autowired
+	private BookshopBooksRepository bookshopBooksRepository;
+
+	@Autowired
+	private OrderItemsRepository orderItemsRepository;
+
+	private CqnAnalyzer analyzer;
+
+	@PostConstruct
+	void initAnalyzer() {
 		this.analyzer = CqnAnalyzer.create(model);
 	}
 
@@ -93,15 +106,37 @@ class AdminServiceHandler implements EventHandler {
 						return; // follow up validations rely on these
 					}
 
-					// calculate the actual quantity difference
-					// FIXME this should handle book changes, currently only quantity changes are handled
-					int diffQuantity = quantity - db.run(Select.from(Bookshop_.ORDER_ITEMS).columns(i -> i.quantity()).byId(orderItem.getId()))
-												.first().map(i -> i.getQuantity()).orElse(0);
+					// calculate the actual quantity difference, taking into account possible book changes
+					int previousQuantity = 0;
+					String previousBookId = null;
+					if (orderItem.getId() != null) {
+						var existingItem = orderItemsRepository.findQuantityAndBook(orderItem.getId());
+						if (existingItem.isPresent()) {
+							var snapshot = existingItem.get();
+							previousQuantity = snapshot.getQuantity() != null ? snapshot.getQuantity() : 0;
+							previousBookId = snapshot.getBookId();
+						}
+					}
+
+					int diffQuantity;
+					if (previousBookId != null && !previousBookId.equals(bookId)) {
+						// book has changed: restore stock on previous book and reserve full quantity on new book
+						int oldQuantity = previousQuantity;
+						if (oldQuantity > 0) {
+							bookshopBooksRepository.findBookStock(previousBookId).ifPresent(oldBook -> {
+								oldBook.setStock(oldBook.getStock() + oldQuantity);
+								bookshopBooksRepository.updateBook(oldBook);
+							});
+						}
+						diffQuantity = quantity;
+					} else {
+						// only quantity changed (or new item)
+						diffQuantity = quantity - previousQuantity;
+					}
 
 					// check if enough books are available
-					var result = db.run(Select.from(BOOKS).columns(b -> b.ID(), b -> b.stock(), b -> b.price()).byId(bookId));
-					result.first().ifPresent(book -> {
-						if (book.getStock() < diffQuantity) {
+					bookshopBooksRepository.findBookStockAndPrice(bookId).ifPresent(book -> {
+						if (diffQuantity > 0 && book.getStock() < diffQuantity) {
 							// Tip: you can have localized messages and use parameters in your messages
 							messages.error(MessageKeys.BOOK_REQUIRE_STOCK, book.getStock())
 								.target(ORDERS, o -> o.Items(i -> i.ID().eq(orderItem.getId()).and(i.IsActiveEntity().eq(orderItem.getIsActiveEntity()))).quantity());
@@ -110,7 +145,7 @@ class AdminServiceHandler implements EventHandler {
 
 						// update the book with the new stock
 						book.setStock(book.getStock() - diffQuantity);
-						db.run(Update.entity(BOOKS).data(book));
+						bookshopBooksRepository.updateBook(book);
 
 						// update the amount
 						BigDecimal updatedAmount = book.getPrice().multiply(BigDecimal.valueOf(quantity));
@@ -179,8 +214,10 @@ class AdminServiceHandler implements EventHandler {
 
 		// get the price of the updated book ID
 		if(bookPrice == null) {
-			var bookResult = db.run(Select.from(BOOKS).byId(bookId).columns(b -> b.price()));
-			bookPrice = bookResult.single().getPrice();
+			bookPrice = bookshopBooksRepository.findBookPrice(bookId).orElse(null);
+			if (bookPrice == null) {
+				return null;
+			}
 		}
 
 		// update the amount of the order item
@@ -253,7 +290,7 @@ class AdminServiceHandler implements EventHandler {
 			try (BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
 				br.lines().skip(1).forEach((line) -> {
 					String[] p = line.split(";");
-					Books book = Books.create();
+					cds.gen.my.bookshop.Books book = cds.gen.my.bookshop.Books.create();
 					book.setId(p[0]);
 					book.setTitle(p[1]);
 					book.setDescr(p[2]);
@@ -265,7 +302,8 @@ class AdminServiceHandler implements EventHandler {
 
 					// separate transaction per line
 					context.getCdsRuntime().changeSetContext().run(ctx -> {
-						db.run(Upsert.into(BOOKS).entry(book));
+						bookshopBooksRepository.upsertBook(book);
+						embeddingService.reindexBook(book.getId());
 					});
 				});
 			} catch (IOException e) {

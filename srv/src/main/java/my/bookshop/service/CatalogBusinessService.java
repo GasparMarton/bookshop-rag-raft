@@ -1,17 +1,19 @@
 package my.bookshop.service;
 
-import cds.gen.catalogservice.Books;
-import cds.gen.catalogservice.BooksAddReviewContext;
-import cds.gen.catalogservice.Books_;
-import cds.gen.catalogservice.ChatContext;
-import cds.gen.catalogservice.ChatResult;
-import cds.gen.catalogservice.ChatResultBook;
-import cds.gen.catalogservice.SubmitOrderContext;
-import cds.gen.catalogservice.Reviews;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sap.cds.CdsVector;
 import com.sap.cds.ql.CQL;
 import com.sap.cds.ql.cqn.CqnAnalyzer;
 import com.sap.cds.ql.cqn.CqnSelect;
@@ -22,36 +24,29 @@ import com.sap.cds.services.ServiceException;
 import com.sap.cds.services.cds.CdsReadEventContext;
 import com.sap.cds.services.messages.Messages;
 import com.sap.cds.services.request.FeatureTogglesInfo;
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+
+import cds.gen.catalogservice.Books;
+import cds.gen.catalogservice.BooksAddReviewContext;
+import cds.gen.catalogservice.Books_;
+import cds.gen.catalogservice.ChatContext;
+import cds.gen.catalogservice.ChatResult;
+import cds.gen.catalogservice.ChatResultBook;
+import cds.gen.catalogservice.Reviews;
+import cds.gen.catalogservice.SubmitOrderContext;
+import dev.langchain4j.data.segment.TextSegment;
 import my.bookshop.MessageKeys;
 import my.bookshop.RatingCalculator;
 import my.bookshop.rag.BookEmbeddingService;
-import my.bookshop.rag.LangChainAiClient;
+import my.bookshop.rag.RagAiClient;
+import my.bookshop.rag.RagPromptBuilder;
+import my.bookshop.rag.RagRetrievalService;
 import my.bookshop.repository.CatalogRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import my.bookshop.repository.bookshop.BookshopBooksRepository;
 
 @Service
 public class CatalogBusinessService {
 
-	private static final String SYSTEM_PROMPT = """
-You are the Bookshop assistant. Ground every answer in the provided book excerpts.
-Always respond with JSON:
-{
-  "reply": "natural language answer",
-  "ids": ["optional list of book IDs to highlight"]
-}
-Return an empty array for ids when no books apply.
-""";
+	private static final Logger logger = LoggerFactory.getLogger(CatalogBusinessService.class);
 
 	private static final TypeReference<List<Map<String, Object>>> HISTORY_TYPE = new TypeReference<>() {
 	};
@@ -61,14 +56,17 @@ Return an empty array for ids when no books apply.
 	private final FeatureTogglesInfo featureToggles;
 	private final RatingCalculator ratingCalculator;
 	private final BookEmbeddingService embeddingService;
-	private final LangChainAiClient aiClient;
+	private final RagAiClient aiClient;
 	private final ObjectMapper objectMapper;
 	private final CqnAnalyzer analyzer;
+	private final RagRetrievalService ragRetrievalService;
+	private final RagPromptBuilder ragPromptBuilder;
 
 	@Autowired
 	public CatalogBusinessService(CatalogRepository repository, Messages messages,
 			FeatureTogglesInfo featureToggles, RatingCalculator ratingCalculator, CqnAnalyzer analyzer,
-			BookEmbeddingService embeddingService, LangChainAiClient aiClient, ObjectMapper objectMapper) {
+			BookEmbeddingService embeddingService, RagAiClient aiClient, ObjectMapper objectMapper,
+			RagRetrievalService ragRetrievalService, RagPromptBuilder ragPromptBuilder) {
 		this.repository = repository;
 		this.messages = messages;
 		this.featureToggles = featureToggles;
@@ -77,6 +75,16 @@ Return an empty array for ids when no books apply.
 		this.aiClient = aiClient;
 		this.objectMapper = objectMapper;
 		this.analyzer = analyzer;
+		this.ragRetrievalService = ragRetrievalService;
+		this.ragPromptBuilder = ragPromptBuilder;
+	}
+
+	public CatalogBusinessService(CatalogRepository repository, Messages messages,
+			FeatureTogglesInfo featureToggles, RatingCalculator ratingCalculator, CqnAnalyzer analyzer,
+			BookEmbeddingService embeddingService, RagAiClient aiClient, ObjectMapper objectMapper,
+			BookshopBooksRepository bookshopBooksRepository) {
+		this(repository, messages, featureToggles, ratingCalculator, analyzer, embeddingService, aiClient, objectMapper,
+				new RagRetrievalService(aiClient, bookshopBooksRepository), new RagPromptBuilder());
 	}
 
 	public void ensureStockColumn(CdsReadEventContext context) {
@@ -130,8 +138,7 @@ Return an empty array for ids when no books apply.
 
 	public void determineReviewable(CdsReadEventContext context, List<Books> books) {
 		String user = context.getUserInfo().getName();
-		List<String> bookIds = books.stream().filter(b -> b.getId() != null).map(Books::getId)
-				.collect(Collectors.toList());
+		List<String> bookIds = collectBookIds(books);
 
 		if (bookIds.isEmpty()) {
 			return;
@@ -146,15 +153,11 @@ Return an empty array for ids when no books apply.
 	}
 
 	public void handleBookCreatedOrUpdated(List<Books> books) {
-		books.stream().map(Books::getId)
-				.filter(id -> id != null && !id.isBlank())
-				.forEach(embeddingService::reindexBook);
+		validBookIds(books).forEach(embeddingService::reindexBook);
 	}
 
 	public void handleBookDeleted(List<Books> books) {
-		books.stream().map(Books::getId)
-				.filter(id -> id != null && !id.isBlank())
-				.forEach(embeddingService::deleteEmbedding);
+		validBookIds(books).forEach(embeddingService::deleteEmbedding);
 	}
 
 	public SubmitOrderContext.ReturnType submitOrder(SubmitOrderContext context) {
@@ -178,29 +181,24 @@ Return an empty array for ids when no books apply.
 	public ChatResult handleChat(ChatContext context) {
 		String message = context.getMessage();
 		if (message == null || message.isBlank()) {
-			ChatResult empty = ChatResult.create();
-			empty.setReply("Please enter a question about the catalog.");
-			return empty;
+			logger.debug("Chat request rejected because message was empty.");
+			return chatResult("Please enter a question about the catalog.", List.of());
 		}
 
 		List<Map<String, Object>> historyTurns = parseHistory(context.getHistory());
-		String queryText = buildQueryText(message, historyTurns);
-		double[] vector = aiClient.embed(queryText.isBlank() ? message : queryText);
-		List<BookContext> contexts = similaritySearch(vector);
-		String contextBlock = buildContextBlock(contexts);
-
-		List<ChatMessage> messages = new ArrayList<>();
-		messages.add(SystemMessage.from(SYSTEM_PROMPT));
-		messages.addAll(toMessages(historyTurns));
-		messages.add(UserMessage.from(buildUserPrompt(contextBlock, message)));
+		String queryText = ragPromptBuilder.buildQueryText(message, historyTurns);
+		double[] vector = ragRetrievalService.embedForQuery(queryText.isBlank() ? message : queryText);
+		List<TextSegment> contexts = ragRetrievalService.similaritySearch(vector);
+		var messages = ragPromptBuilder.buildMessages(historyTurns, contexts, message);
 
 		String raw = aiClient.chat(messages);
+		if (raw == null || raw.isBlank()) {
+			logger.warn("RAG chat returned empty response; sending fallback to client.");
+			return chatResult("RAG is currently unavailable. Please try again later or refine your question.", List.of());
+		}
 		ChatPayload payload = parsePayload(raw);
 
-		ChatResult result = ChatResult.create();
-		result.setReply(payload.reply().isBlank() ? raw : payload.reply());
-		result.setBooks(payload.books());
-		return result;
+		return chatResult(payload.reply().isBlank() ? raw : payload.reply(), payload.books());
 	}
 
 	private List<Map<String, Object>> parseHistory(String rawHistory) {
@@ -210,76 +208,10 @@ Return an empty array for ids when no books apply.
 		try {
 			return objectMapper.readValue(rawHistory, HISTORY_TYPE);
 		} catch (Exception e) {
+			logger.debug("Failed to parse chat history payload ({} chars); ignoring history.",
+					rawHistory.length(), e);
 			return List.of();
 		}
-	}
-
-	private List<ChatMessage> toMessages(List<Map<String, Object>> history) {
-		if (history.isEmpty()) {
-			return List.of();
-		}
-		List<ChatMessage> messages = new ArrayList<>();
-		int start = Math.max(0, history.size() - 6);
-		for (int i = start; i < history.size(); i++) {
-			Map<String, Object> turn = history.get(i);
-			String role = String.valueOf(turn.get("role"));
-			Object contentRaw = turn.get("content");
-			String content = contentRaw == null ? null : contentRaw.toString();
-			if (content == null || content.isBlank()) {
-				continue;
-			}
-			if ("user".equals(role)) {
-				messages.add(UserMessage.from(content));
-			} else if ("assistant".equals(role)) {
-				messages.add(AiMessage.from(content));
-			}
-		}
-		return messages;
-	}
-
-	private String buildQueryText(String message, List<Map<String, Object>> history) {
-		StringBuilder builder = new StringBuilder(message.trim());
-		int added = 0;
-		for (int i = history.size() - 1; i >= 0 && added < 2; i--) {
-			Map<String, Object> turn = history.get(i);
-			if ("user".equals(turn.get("role"))) {
-				Object content = turn.get("content");
-				if (content != null) {
-					builder.append(' ').append(content.toString());
-					added++;
-				}
-			}
-		}
-		return builder.toString().trim();
-	}
-
-	private String buildContextBlock(List<BookContext> contexts) {
-		if (contexts.isEmpty()) {
-			return "No matching passages found.";
-		}
-		return contexts.stream()
-				.map(c -> String.format("- Book: %s (ID %s)\n%s",
-						c.title() == null ? "Unknown" : c.title(),
-						c.id(),
-						c.descr() == null ? "" : c.descr()))
-				.collect(Collectors.joining("\n\n"));
-	}
-
-	private String buildUserPrompt(String contextBlock, String question) {
-		return """
-Use the following context to answer.
-Context:
-%s
-
-Question: %s
-
-Respond ONLY with JSON matching:
-{
-  "reply": "<natural language response>",
-  "ids": ["<optional book id>"]
-}
-If no books are relevant, use an empty array for ids.
-""".formatted(contextBlock, question);
 	}
 
 	private ChatPayload parsePayload(String raw) {
@@ -290,46 +222,38 @@ If no books are relevant, use an empty array for ids.
 			for (JsonNode idNode : node.withArray("ids")) {
 				ids.add(idNode.asText());
 			}
-			List<ChatResultBook> resultBooks = repository.getByIds(ids).stream()
-					.map(book -> {
-						ChatResultBook resultBook = ChatResultBook.create();
-						resultBook.putAll(book);
-						return resultBook;
-					})
-					.toList();
+			List<ChatResultBook> resultBooks = ids.isEmpty()
+					? List.of()
+					: repository.getChatResultBooks(ids);
 			return new ChatPayload(reply, resultBooks);
 		} catch (Exception e) {
+			logger.warn("Failed to parse chat payload returned by RAG; sending raw text instead.", e);
 			return new ChatPayload(raw, List.of());
 		}
 	}
 
-	private List<BookContext> similaritySearch(double[] vector) {
-		if (vector == null || vector.length == 0) {
-			return List.of();
-		}
-		CdsVector cdsVector = toVector(vector);
-		List<cds.gen.my.bookshop.Books> rows = repository.findSimilarBooks(cdsVector);
-		List<BookContext> contexts = new ArrayList<>();
-		for (cds.gen.my.bookshop.Books row : rows) {
-			contexts.add(new BookContext(SYSTEM_PROMPT, SYSTEM_PROMPT, SYSTEM_PROMPT, 0));
-		}
-		return contexts;
-	}
-
-	private CdsVector toVector(double[] vector) {
-		if (vector == null) {
-			return null;
-		}
-		float[] values = new float[vector.length];
-		for (int i = 0; i < vector.length; i++) {
-			values[i] = (float) vector[i];
-		}
-		return CdsVector.of(values);
-	}
-
 	private record ChatPayload(String reply, List<ChatResultBook> books) {}
 
-	private record BookContext(String id, String title, String descr, double similarity) {}
+	private ChatResult chatResult(String reply, List<ChatResultBook> resultBooks) {
+		ChatResult result = ChatResult.create();
+		result.setReply(reply);
+		result.setBooks(resultBooks == null ? List.of() : resultBooks);
+		return result;
+	}
+
+	private List<String> collectBookIds(List<Books> books) {
+		return validBookIds(books).distinct().toList();
+	}
+
+	private Stream<String> validBookIds(List<Books> books) {
+		if (books == null) {
+			return Stream.empty();
+		}
+		return books.stream()
+				.map(Books::getId)
+				.filter(id -> id != null && !id.isBlank())
+				.map(String::trim);
+	}
 
 	private CqnAnalyzer analyzer() {
 		if (analyzer == null) {

@@ -5,6 +5,7 @@ default-env.json
 openapi.json
 .env
 .values.yaml
+srv/src/main/resources/application-local.properties
 
 bin/
 target/

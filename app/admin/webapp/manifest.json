@@ -85,14 +85,17 @@
                     "id": "BooksList",
                     "name": "sap.fe.templates.ListReport",
                     "options": {
-                        "settings" : {
-                            "contextPath" : "/Books",
-                            "navigation" : {
-                                "Books" : {
-                                    "detail" : {
-                                        "route" : "BooksDetails"
+                        "settings": {
+                            "contextPath": "/Books",
+                            "navigation": {
+                                "Books": {
+                                    "detail": {
+                                        "route": "BooksDetails"
                                     }
                                 }
+                            },
+                            "tableSettings": {
+                                "selectionMode": "MultiSelect"
                             },
                             "content": {
                                 "header": {
@@ -100,6 +103,10 @@
                                         "upload": {
                                             "press": "admin.extension.Upload.showUploadDialog",
                                             "text": "Import Books"
+                                        },
+                                        "rebuildEmbeddings": {
+                                            "press": "admin.extension.RebuildEmbeddings.rebuildEmbeddings",
+                                            "text": "Rebuild Embeddings"
                                         }
                                     }
                                 }

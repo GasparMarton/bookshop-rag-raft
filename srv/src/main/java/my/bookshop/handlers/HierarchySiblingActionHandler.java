@@ -1,18 +1,15 @@
 package my.bookshop.handlers;
 
-import static cds.gen.adminservice.AdminService_.GENRE_HIERARCHY;
-
 import cds.gen.adminservice.AdminService_;
 import cds.gen.adminservice.GenreHierarchy;
 import cds.gen.adminservice.GenreHierarchyMoveSiblingContext;
 import cds.gen.adminservice.GenreHierarchy_;
-import com.sap.cds.ql.Select;
-import com.sap.cds.ql.Update;
 import com.sap.cds.services.handler.EventHandler;
 import com.sap.cds.services.handler.annotations.On;
 import com.sap.cds.services.handler.annotations.ServiceName;
-import com.sap.cds.services.persistence.PersistenceService;
 import java.util.List;
+import my.bookshop.repository.adminservice.GenreHierarchyRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -22,24 +19,16 @@ import org.springframework.stereotype.Component;
  */
 public class HierarchySiblingActionHandler implements EventHandler {
 
-    private final PersistenceService db;
-
-    HierarchySiblingActionHandler(PersistenceService db) {
-        this.db = db;
-    }
+    @Autowired
+    private GenreHierarchyRepository genreHierarchyRepository;
 
     @On
     void onMoveSiblingAction(GenreHierarchy_ ref, GenreHierarchyMoveSiblingContext context) {
         // Find current node and its parent
-        GenreHierarchy toMove = db.run(Select.from(ref)
-                .columns(c -> c.ID(), c -> c.parent_ID()))
-                .single();
+        GenreHierarchy toMove = genreHierarchyRepository.loadNode(ref);
 
         // Find all children of the parent, which are siblings of the entry being moved
-        List<GenreHierarchy> siblingNodes = db.run(Select.from(GENRE_HIERARCHY)
-                .columns(c -> c.ID(), c -> c.siblingRank())
-                .where(c -> c.parent_ID().eq(toMove.getParentId())))
-                .list();
+        List<GenreHierarchy> siblingNodes = genreHierarchyRepository.findSiblings(toMove.getParentId());
 
         int oldPosition = 0;
         int newPosition = siblingNodes.size();
@@ -62,7 +51,7 @@ public class HierarchySiblingActionHandler implements EventHandler {
         }
 
         // Update DB
-        db.run(Update.entity(GENRE_HIERARCHY).entries(siblingNodes));
+        genreHierarchyRepository.updateSiblings(siblingNodes);
         context.setCompleted();
     }
 }

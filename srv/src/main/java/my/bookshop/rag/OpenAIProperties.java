@@ -7,10 +7,10 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "openai")
 public class OpenAIProperties {
 
-	private String baseUrl = "https://api.openai.com/v1";
+	private String baseUrl;
 	private String apiKey;
-	private String embeddingModel = "text-embedding-3-small";
-	private String chatModel = "gpt-4o-mini";
+	private String embeddingModel;
+	private String chatModel;
 
 	public String getBaseUrl() {
 		return baseUrl;

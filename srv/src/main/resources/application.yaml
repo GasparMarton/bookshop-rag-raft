@@ -3,6 +3,8 @@ logging:
   level:
     '[com.sap.cds.auditlog]': DEBUG
 spring:
+  config:
+    import: optional:classpath:/application-local.properties
   jmx:
     enabled: true
 cds:
@@ -26,10 +28,10 @@ server.servlet.encoding:
   charset: UTF-8
   force: true
 openai:
-  base-url: https://api.openai.com/v1
-  api-key: ${OPENAI_API_KEY:}
+  base-url: ${external.api.base-url:${OPENAI_BASE_URL:}}
+  api-key: ${external.api.key:${OPENAI_API_KEY:}}
   embedding-model: text-embedding-3-small
-  chat-model: gpt-4o-mini
+  chat-model: gpt-5-nano
 management:
   endpoint:
     health:

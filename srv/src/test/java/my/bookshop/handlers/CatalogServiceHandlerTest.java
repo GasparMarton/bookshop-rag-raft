@@ -28,7 +28,8 @@ class CatalogServiceHandlerTest {
 				null,
 				null,
 				null,
-				new ObjectMapper());
+				new ObjectMapper(),
+				null);
 
 		service.applyDiscounts(Stream.of(book1, book2));
 

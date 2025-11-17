@@ -11,7 +11,8 @@ service AdminService @(requires: 'admin') {
   entity Books          as
     projection on my.Books
     excluding {
-      reviews
+      reviews,
+      embedding
     }
     actions {
       action addToOrder(order_ID : UUID, quantity : Integer) returns Orders;
@@ -31,11 +32,15 @@ service AdminService @(requires: 'admin') {
     };
 
   entity ContentsHierarchy as projection on my.Contents;
+  entity AiUsageRecords  as projection on my.AiUsageRecords;
 
   @cds.persistence.skip
   entity Upload @odata.singleton {
     csv : LargeBinary @Core.MediaType: 'text/csv';
   }
+
+  @Common.Label: 'Rebuild Book Embeddings'
+  action rebuildEmbeddings();
 }
 
 // Deep Search Items

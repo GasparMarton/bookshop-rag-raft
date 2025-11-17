@@ -22,7 +22,6 @@ sap.ui.define(
                 MessageBox.error(sMessage || "Upload failed")
             }
 
-            // TODO: Better option for this?
             function byId(sId) {
                 return sap.ui.core.Fragment.byId("uploadDialog", sId);
             }

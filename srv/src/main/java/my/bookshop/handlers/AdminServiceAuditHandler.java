@@ -7,6 +7,7 @@ import cds.gen.adminservice.Orders;
 import cds.gen.adminservice.Orders_;
 import com.sap.cds.ql.Select;
 import com.sap.cds.ql.cqn.CqnDelete;
+import com.sap.cds.ql.cqn.CqnSelect;
 import com.sap.cds.services.EventContext;
 import com.sap.cds.services.auditlog.Action;
 import com.sap.cds.services.auditlog.AuditLogService;
@@ -19,12 +20,13 @@ import com.sap.cds.services.cds.CqnService;
 import com.sap.cds.services.handler.EventHandler;
 import com.sap.cds.services.handler.annotations.Before;
 import com.sap.cds.services.handler.annotations.ServiceName;
-import com.sap.cds.services.persistence.PersistenceService;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import my.bookshop.repository.adminservice.OrdersRepository;
 
 /**
  * A custom handler that creates AuditLog messages.
@@ -33,14 +35,11 @@ import org.springframework.stereotype.Component;
 @ServiceName(AdminService_.CDS_NAME)
 class AdminServiceAuditHandler implements EventHandler {
 
-	private final PersistenceService db;
+	@Autowired
+	private OrdersRepository ordersRepository;
 
-	private final AuditLogService auditLog;
-
-	AdminServiceAuditHandler(PersistenceService db, AuditLogService auditLog) {
-		this.db = db;
-		this.auditLog = auditLog;
-	}
+	@Autowired
+	private AuditLogService auditLog;
 
 	@Before(event = { CqnService.EVENT_CREATE })
 	public void beforeCreateOrder(Stream<Orders> orders) {
@@ -74,10 +73,10 @@ class AdminServiceAuditHandler implements EventHandler {
 	@Before(entity = { Orders_.CDS_NAME })
 	public void beforeDelete(CdsDeleteEventContext context) {
 		// prepare a select statement to read old currency code
-		Select<?> ordersSelect = toSelect(context.getCqn());
+		CqnSelect ordersSelect = toSelect(context.getCqn());
 
 		// read old order number from DB
-		this.db.run(ordersSelect).first(Orders.class).ifPresent(oldOrders -> {
+		ordersRepository.findOrder(ordersSelect).ifPresent(oldOrders -> {
 			ConfigChange cfgChange = createConfigChange(null, oldOrders);
 			auditCfgChange(Action.DELETE, cfgChange, context);
 		});
@@ -92,11 +91,11 @@ class AdminServiceAuditHandler implements EventHandler {
 
 	private Optional<Orders> readOldOrders(String ordersId) {
 		// prepare a select statement to read old order number
-		var ordersSelect = Select.from(ORDERS).columns(Orders_::OrderNo)
+		CqnSelect ordersSelect = Select.from(ORDERS).columns(Orders_::OrderNo)
 				.where(o -> o.ID().eq(ordersId).and(o.IsActiveEntity().eq(true)));
 
 		// read old orders from DB
-		return this.db.run(ordersSelect).first();
+		return ordersRepository.findOrderCurrencyForActiveEntity(ordersId);
 	}
 
 	private static ConfigChange createConfigChange(Orders orders, Orders oldOrders) {

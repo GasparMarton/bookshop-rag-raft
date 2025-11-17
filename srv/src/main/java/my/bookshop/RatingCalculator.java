@@ -1,17 +1,11 @@
 package my.bookshop;
 
-import static cds.gen.my.bookshop.Bookshop_.BOOKS;
-
-import cds.gen.my.bookshop.Books;
-import cds.gen.my.bookshop.Reviews;
-import com.sap.cds.Result;
-import com.sap.cds.ql.Select;
-import com.sap.cds.ql.Update;
-import com.sap.cds.services.persistence.PersistenceService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.OptionalDouble;
 import java.util.stream.Stream;
+import my.bookshop.repository.bookshop.BookshopBooksRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,20 +15,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class RatingCalculator {
 
-	private PersistenceService db;
-
-	RatingCalculator(PersistenceService db) {
-		this.db = db;
-	}
+	@Autowired
+	private BookshopBooksRepository bookshopBooksRepository;
 
 	/**
 	 * Initializes the ratings for all existing books based on their reviews.
 	 */
 	public void initBookRatings() {
-		var result = db.run(Select.from(BOOKS).columns(b -> b.ID()));
-		for (Books book : result) {
-			setBookRating(book.getId());
-		}
+		bookshopBooksRepository.findAllBookIds().forEach(this::setBookRating);
 	}
 
 	/**
@@ -43,12 +31,11 @@ public class RatingCalculator {
 	 * @param bookId
 	 */
 	public void setBookRating(String bookId) {
-		Result run = db.run(Select.from(BOOKS, b -> b.filter(b.ID().eq(bookId)).reviews()));
-
-		Stream<Double> ratings = run.streamOf(Reviews.class).map(r -> r.getRating().doubleValue());
+		var reviews = bookshopBooksRepository.findReviewsForBook(bookId);
+		Stream<Double> ratings = reviews.stream().map(r -> r.getRating().doubleValue());
 		BigDecimal rating = getAvgRating(ratings);
 
-		db.run(Update.entity(BOOKS).byId(bookId).data(Books.RATING, rating));
+		bookshopBooksRepository.updateBookRating(bookId, rating);
 	}
 
 	static BigDecimal getAvgRating(Stream<Double> ratings) {

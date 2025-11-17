@@ -1,9 +1,15 @@
 sap.ui.define([
   "sap/ui/core/Element",
-  "sap/ui/model/Filter",
-  "sap/ui/model/FilterOperator"
-], function (Element, Filter, FilterOperator) {
+  "bookshop/chat/State",
+  "bookshop/chat/Client",
+  "bookshop/chat/TableHelper"
+], function (Element, ChatState, ChatClient, TableHelper) {
   "use strict";
+
+  let toggleButton = null;
+  let panelElement = null;
+  let hashChangeHandler = null;
+  let visibilityInterval = null;
 
   function el(tag, attrs, ...children) {
     const node = document.createElement(tag);
@@ -36,60 +42,29 @@ sap.ui.define([
     }
   }
 
-  function findBooksTable() {
-    let found = null;
-    try {
-      Element.registry.forEach(function (ctrl) {
-        if (!ctrl || !ctrl.getMetadata) return;
-        const name = ctrl.getMetadata().getName();
-        if (name === 'sap.ui.mdc.Table') {
-          const id = ctrl.getId();
-          if (id.includes('BooksList') && id.includes('Table')) found = ctrl;
-        }
-      });
-    } catch (e) {
-      // ignore
+  function destroyUI() {
+    if (hashChangeHandler) {
+      window.removeEventListener('hashchange', hashChangeHandler);
+      hashChangeHandler = null;
     }
-    return found;
-  }
-
-  async function callChat(message, history) {
-    try {
-      const res = await fetch('/api/browse/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, history: JSON.stringify(history || []) })
-      });
-      if (!res.ok) throw new Error('chat failed');
-      const data = await res.json();
-      const obj = data && (data.value || data);
-      const reply = obj && obj.reply ? String(obj.reply) : '';
-      const ids = obj && Array.isArray(obj.ids) ? obj.ids : [];
-      return { reply, ids };
-    } catch (e) {
-      return { reply: 'Sorry, I had trouble answering that.', ids: [] };
+    if (visibilityInterval) {
+      clearInterval(visibilityInterval);
+      visibilityInterval = null;
     }
-  }
-
-  async function applyIDsToTable(ids) {
-    const table = findBooksTable();
-    if (!table || !table.getRowBinding) return false;
-    const binding = table.getRowBinding();
-    if (!binding) return false;
-    if (!ids || ids.length === 0) {
-      binding.filter([]);
-      return true;
+    if (panelElement && panelElement.parentElement) {
+      panelElement.remove();
     }
-    const filters = ids.map(id => new Filter('ID', FilterOperator.EQ, id));
-    const orFilter = new Filter({ filters, and: false });
-    binding.filter(orFilter);
-    return true;
+    if (toggleButton && toggleButton.parentElement) {
+      toggleButton.remove();
+    }
+    toggleButton = null;
+    panelElement = null;
   }
 
   function createUI() {
-    if (document.getElementById('bs-chat-toggle')) return;
-    const toggle = el('button', { id: 'bs-chat-toggle', title: 'Chat' }, 'Chat');
-    const panel = el('div', { id: 'bs-chat-panel' },
+    if (toggleButton || document.getElementById('bs-chat-toggle')) return;
+    toggleButton = el('button', { id: 'bs-chat-toggle', title: 'Chat' }, 'Chat');
+    panelElement = el('div', { id: 'bs-chat-panel' },
       el('div', { id: 'bs-chat-header' },
         el('span', null, 'Assistant'),
         el('button', { title: 'Close', style: { background: 'transparent', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '18px' } }, 'x')
@@ -101,43 +76,44 @@ sap.ui.define([
       )
     );
     const typing = el('div', { class: 'bs-typing', id: 'bs-typing' }, 'Working...');
-    panel.querySelector('#bs-chat-messages').appendChild(typing);
+    panelElement.querySelector('#bs-chat-messages').appendChild(typing);
 
-    const closeBtn = panel.querySelector('#bs-chat-header button');
-    closeBtn.addEventListener('click', () => panel.style.display = 'none');
-    toggle.addEventListener('click', () => {
-      panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'flex' : 'none';
-      if (panel.style.display === 'flex') {
+    const closeBtn = panelElement.querySelector('#bs-chat-header button');
+    closeBtn.addEventListener('click', () => panelElement.style.display = 'none');
+    toggleButton.addEventListener('click', () => {
+      panelElement.style.display = (panelElement.style.display === 'none' || !panelElement.style.display) ? 'flex' : 'none';
+      if (panelElement.style.display === 'flex') {
         document.getElementById('bs-chat-text').focus();
       }
     });
 
-    const sendBtn = panel.querySelector('#bs-chat-send');
-    const textInput = panel.querySelector('#bs-chat-text');
+    const sendBtn = panelElement.querySelector('#bs-chat-send');
+    const textInput = panelElement.querySelector('#bs-chat-text');
 
     function addMessage(role, text) {
       const msg = el('div', { class: `bs-msg ${role}` }, text);
-      panel.querySelector('#bs-chat-messages').insertBefore(msg, typing);
-      panel.querySelector('#bs-chat-messages').scrollTop = panel.querySelector('#bs-chat-messages').scrollHeight;
+      const msgArea = panelElement.querySelector('#bs-chat-messages');
+      msgArea.insertBefore(msg, typing);
+      msgArea.scrollTop = msgArea.scrollHeight;
     }
 
-    const history = [];
+    const state = ChatState.create();
 
     async function sendMessage() {
       const content = (textInput.value || '').trim();
       if (!content) return;
       addMessage('user', content);
-      history.push({ role: 'user', content });
+      state.addUserMessage(content);
       textInput.value = '';
       typing.style.display = 'block';
       try {
-        const { reply, ids } = await callChat(content, history);
+        const { reply, ids } = await ChatClient.callChat(content, state.getHistory());
         if (reply) {
           addMessage('bot', reply);
-          history.push({ role: 'assistant', content: reply });
+          state.addAssistantMessage(reply);
         }
         if (ids && ids.length) {
-          const ok = await applyIDsToTable(ids);
+          const ok = await TableHelper.applyIDsToTable(ids);
           if (!ok) throw new Error('Table not ready');
         }
       } catch (e) {
@@ -155,28 +131,35 @@ sap.ui.define([
       }
     });
 
-    document.body.append(toggle, panel);
+    document.body.append(toggleButton, panelElement);
 
     setTimeout(() => {
-      panel.style.display = 'flex';
+      panelElement.style.display = 'flex';
       addMessage('bot', 'Ask about books. I can answer and narrow the list when needed.');
     }, 800);
 
     async function updateVisibility() {
+      if (!toggleButton || !panelElement) {
+        return;
+      }
       const fb = await findBooksFilterBar();
-      const tbl = findBooksTable();
+      const tbl = TableHelper.findBooksTable && TableHelper.findBooksTable();
       const shouldShow = !!(fb && tbl);
-      toggle.style.display = shouldShow ? 'block' : 'none';
-      if (!shouldShow) panel.style.display = 'none';
+      toggleButton.style.display = shouldShow ? 'block' : 'none';
+      if (!shouldShow) panelElement.style.display = 'none';
     }
 
     setTimeout(updateVisibility, 1200);
-    window.addEventListener('hashchange', () => setTimeout(updateVisibility, 300));
+    hashChangeHandler = () => setTimeout(updateVisibility, 300);
+    window.addEventListener('hashchange', hashChangeHandler);
     let tries = 0;
-    const iv = setInterval(async () => {
+    visibilityInterval = setInterval(async () => {
       tries++;
       await updateVisibility();
-      if (tries > 12) clearInterval(iv);
+      if (tries > 12 && visibilityInterval) {
+        clearInterval(visibilityInterval);
+        visibilityInterval = null;
+      }
     }, 800);
   }
 
@@ -189,6 +172,9 @@ sap.ui.define([
       } else {
         createUI();
       }
+    },
+    destroy: function () {
+      destroyUI();
     }
   };
 });

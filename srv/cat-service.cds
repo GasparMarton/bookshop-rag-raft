@@ -4,6 +4,7 @@ using {my.bookshop as my} from '../db/index';
 @odata.apply.transformations
 service CatalogService @(requires: 'any') {
     @readonly
+    @cds.redirection.target
     entity Books       as projection on my.Books excluding {
         createdBy,
         modifiedBy,
