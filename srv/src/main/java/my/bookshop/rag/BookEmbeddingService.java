@@ -1,12 +1,15 @@
 package my.bookshop.rag;
 
+import cds.gen.my.bookshop.Books;
+import java.util.ArrayList;
+import java.util.List;
+import my.bookshop.repository.bookshop.BookContentChunkRepository;
+import my.bookshop.repository.bookshop.BookContentChunkRepository.ChunkPersistRequest;
+import my.bookshop.repository.bookshop.BookshopBooksRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
-import cds.gen.my.bookshop.Books;
-import my.bookshop.repository.bookshop.BookshopBooksRepository;
 
 @Component
 public class BookEmbeddingService {
@@ -17,7 +20,12 @@ public class BookEmbeddingService {
 	private BookshopBooksRepository bookshopBooksRepository;
 
 	@Autowired
+	private BookContentChunkRepository chunkRepository;
+
+	@Autowired
 	private RagAiClient aiClient;
+
+	private final BookTextChunker chunker = new BookTextChunker();
 
 	public void rebuildAll() {
 		bookshopBooksRepository.findAllWithTextFields()
@@ -36,39 +44,36 @@ public class BookEmbeddingService {
 		if (bookId == null || bookId.isBlank()) {
 			return;
 		}
-		bookshopBooksRepository.clearEmbedding(bookId);
+		chunkRepository.deleteChunksForBook(bookId);
 	}
 
 	public void deleteAllEmbeddings() {
-		bookshopBooksRepository.clearAllEmbeddings();
+		chunkRepository.deleteAll();
 	}
 
 	private void reindex(Books book) {
-		String text = buildText(book);
-		if (text.isBlank()) {
-			logger.debug("No text found for book {}. Clearing embedding.", book.getTitle());
-			bookshopBooksRepository.clearEmbedding(book.getId());
+		List<BookTextChunk> chunks = chunker.chunk(book);
+		if (chunks.isEmpty()) {
+			logger.debug("No text found for book {}. Clearing embeddings.", book.getTitle());
+			chunkRepository.deleteChunksForBook(book.getId());
 			return;
 		}
-		double[] vector = aiClient.embed(text);
-		if (vector.length == 0) {
+		List<ChunkPersistRequest> payloads = new ArrayList<>();
+		for (BookTextChunk chunk : chunks) {
+			double[] vector = aiClient.embed(chunk.text());
+			if (vector.length == 0) {
+				logger.warn("Embedding failed for book {} chunk {} ({})",
+						book.getTitle(), chunk.index(), chunk.source());
+				continue;
+			}
+			payloads.add(new ChunkPersistRequest(chunk, vector));
+		}
+		if (payloads.isEmpty()) {
 			logger.warn("Embedding failed for book {}", book.getTitle());
+			chunkRepository.deleteChunksForBook(book.getId());
 			return;
 		}
-		bookshopBooksRepository.updateEmbedding(book.getId(), vector);
-	}
-
-	private String buildText(Books book) {
-		StringBuilder builder = new StringBuilder();
-		if (book.getTitle() != null) {
-			builder.append(book.getTitle()).append('.');
-		}
-		if (book.getDescr() != null) {
-			builder.append(' ').append(book.getDescr());
-		}
-		if (book.getFullText() != null) {
-			builder.append(' ').append(book.getFullText());
-		}
-		return builder.toString().replaceAll("\\s+", " ").trim();
+		chunkRepository.replaceChunks(book.getId(), payloads);
+		logger.debug("Persisted {} chunks for book {}", payloads.size(), book.getTitle());
 	}
 }

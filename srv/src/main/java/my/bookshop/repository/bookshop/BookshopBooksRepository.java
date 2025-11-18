@@ -4,17 +4,18 @@ import static cds.gen.my.bookshop.Bookshop_.BOOKS;
 
 import cds.gen.my.bookshop.Books;
 import cds.gen.my.bookshop.Reviews;
-import com.sap.cds.CdsVector;
-import com.sap.cds.ql.CQL;
 import com.sap.cds.ql.Select;
 import com.sap.cds.ql.Update;
 import com.sap.cds.ql.Upsert;
 import com.sap.cds.ql.cqn.CqnSelect;
 import com.sap.cds.services.persistence.PersistenceService;
 import java.math.BigDecimal;
-import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
@@ -81,68 +82,24 @@ public class BookshopBooksRepository {
 		db.run(Upsert.into(BOOKS).entry(book));
 	}
 
-	public void updateEmbedding(String bookId, double[] vector) {
-		if (bookId == null || bookId.isBlank()) {
-			return;
+	public Map<String, Books> findSummariesByIds(Collection<String> ids) {
+		if (ids == null || ids.isEmpty()) {
+			return Map.of();
 		}
-		List<BigDecimal> values = toBigDecimals(vector);
-		db.run(Update.entity(BOOKS).byId(bookId)
-				.data(Books.EMBEDDING, values));
-	}
-
-	public void clearEmbedding(String bookId) {
-		if (bookId == null || bookId.isBlank()) {
-			return;
+		List<String> normalized = ids.stream()
+				.filter(Objects::nonNull)
+				.map(String::trim)
+				.filter(id -> !id.isEmpty())
+				.distinct()
+				.toList();
+		if (normalized.isEmpty()) {
+			return Map.of();
 		}
-		db.run(Update.entity(BOOKS).byId(bookId)
-				.data(Books.EMBEDDING, null));
-	}
-
-	public void clearAllEmbeddings() {
-		db.run(Update.entity(BOOKS)
-				.data(Books.EMBEDDING, null));
-	}
-
-	public List<Books> findSimilarBooksByVector(double[] vector) {
-		CdsVector cdsVector = toVector(vector);
-		if (cdsVector == null) {
-			return List.of();
-		}
-		var similarity = CQL.cosineSimilarity(CQL.get(Books.EMBEDDING), CQL.val(cdsVector));
 		CqnSelect select = Select.from(BOOKS)
-				.columns(b -> b.ID(),
-						b -> b.title(),
-						b -> b.descr(),
-						b -> b.stock(),
-						b -> b.price(),
-						b -> b.currency_code(),
-						b -> b.rating(),
-						b -> similarity.as("similarity"))
-					.where(b -> b.embedding().isNotNull())
-					.orderBy(b -> b.get("similarity").desc())
-					.limit(10);
-		return db.run(select).listOf(Books.class);
-	}
-
-	private List<BigDecimal> toBigDecimals(double[] vector) {
-		if (vector == null) {
-			return List.of();
-		}
-		List<BigDecimal> values = new ArrayList<>(vector.length);
-		for (double value : vector) {
-			values.add(BigDecimal.valueOf(value));
-		}
-		return values;
-	}
-
-	private CdsVector toVector(double[] vector) {
-		if (vector == null || vector.length == 0) {
-			return null;
-		}
-		float[] values = new float[vector.length];
-		for (int i = 0; i < vector.length; i++) {
-			values[i] = (float) vector[i];
-		}
-		return CdsVector.of(values);
+				.columns(b -> b.ID(), b -> b.title(), b -> b.descr())
+				.where(b -> b.ID().in(normalized.toArray(String[]::new)));
+		return db.run(select)
+				.streamOf(Books.class)
+				.collect(Collectors.toMap(Books::getId, Function.identity(), (left, right) -> left));
 	}
 }

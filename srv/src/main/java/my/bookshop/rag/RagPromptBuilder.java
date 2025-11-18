@@ -32,7 +32,7 @@ Response contract (always valid JSON):
   "ids": ["<book-id-1>", "<book-id-2>"]
 }
 Rules:
-- If you reference no books, return an empty ids array.
+- If you reference no books, return an empty ids array and say: Did not find any books like this in the database, but here are some recommendations from online:(recommend). In the (recommend) part include some books.
 - If you lack enough context, say so in reply and keep ids empty.
 - Do not include markdown, code fences, or extra keys.
 """);
@@ -94,17 +94,15 @@ Rules:
 		return contexts.stream()
 				.map(segment -> {
 					Metadata metadata = segment.metadata();
-					String id = metadata != null ? metadata.getString("bookId") : null;
 					String title = metadata != null ? metadata.getString("title") : null;
 					Double similarity = metadata != null ? metadata.getDouble("similarity") : null;
-					String excerpt = metadata != null && metadata.get("excerpt") != null
-							? metadata.get("excerpt")
+					String excerpt = metadata != null && metadata.getString("excerpt") != null
+							? metadata.getString("excerpt")
 							: segment.text();
 					return String.format("- Book: %s (ID %s, similarity %.3f)%n%s",
 							title == null ? "Unknown" : title,
-							id == null ? "n/a" : id,
 							similarity == null ? 0.0 : similarity,
-							excerpt == null ? "" : truncate(excerpt, 600));
+							excerpt == null ? "" : excerpt);
 				})
 				.collect(Collectors.joining("\n\n"));
 	}
@@ -113,12 +111,6 @@ Rules:
 		return StructuredPromptProcessor.toPrompt(new RagUserPrompt(question, contextBlock));
 	}
 
-	private String truncate(String text, int maxLength) {
-		if (text == null || text.length() <= maxLength) {
-			return text;
-		}
-		return text.substring(0, maxLength) + "...";
-	}
 	@StructuredPrompt({
 			"User question:",
 			"{{question}}",
@@ -131,11 +123,5 @@ Rules:
 			"- If evidence is empty, explain that no relevant passages were found.",
 			"- Keep the final reply short, confident, and grounded in the evidence."
 	})
-	private interface RagUserPromptTemplate {
-		String question();
-
-		String context();
-	}
-
-	private record RagUserPrompt(String question, String context) implements RagUserPromptTemplate {}
+	private record RagUserPrompt(String question, String context) {}
 }

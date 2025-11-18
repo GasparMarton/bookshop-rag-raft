@@ -7,11 +7,7 @@ service ReviewService {
     @readonly
     entity Books   as
         projection on my.Books
-        excluding {
-            createdBy,
-            modifiedBy,
-            embedding
-        }
+        excluding { createdBy, modifiedBy, fullText, chunks }
 
     @readonly
     entity Authors as projection on my.Authors;

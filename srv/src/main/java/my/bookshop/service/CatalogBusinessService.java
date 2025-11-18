@@ -41,6 +41,7 @@ import my.bookshop.rag.RagAiClient;
 import my.bookshop.rag.RagPromptBuilder;
 import my.bookshop.rag.RagRetrievalService;
 import my.bookshop.repository.CatalogRepository;
+import my.bookshop.repository.bookshop.BookContentChunkRepository;
 import my.bookshop.repository.bookshop.BookshopBooksRepository;
 
 @Service
@@ -82,9 +83,9 @@ public class CatalogBusinessService {
 	public CatalogBusinessService(CatalogRepository repository, Messages messages,
 			FeatureTogglesInfo featureToggles, RatingCalculator ratingCalculator, CqnAnalyzer analyzer,
 			BookEmbeddingService embeddingService, RagAiClient aiClient, ObjectMapper objectMapper,
-			BookshopBooksRepository bookshopBooksRepository) {
+			BookshopBooksRepository bookshopBooksRepository, BookContentChunkRepository chunkRepository) {
 		this(repository, messages, featureToggles, ratingCalculator, analyzer, embeddingService, aiClient, objectMapper,
-				new RagRetrievalService(aiClient, bookshopBooksRepository), new RagPromptBuilder());
+				new RagRetrievalService(aiClient, bookshopBooksRepository, chunkRepository), new RagPromptBuilder());
 	}
 
 	public void ensureStockColumn(CdsReadEventContext context) {

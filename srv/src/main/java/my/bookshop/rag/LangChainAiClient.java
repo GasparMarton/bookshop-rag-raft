@@ -29,22 +29,13 @@ public class LangChainAiClient implements RagAiClient {
 		this.usageTracker = usageTracker;
 		this.chatModelName = properties.getChatModel();
 		this.embeddingModelName = properties.getEmbeddingModel();
-		String apiKey = properties.getApiKey();
-		if (apiKey == null || apiKey.isBlank()) {
-			// In local / test environments we may not have an API key.
-			// In that case, fall back to a no-op client so that the
-			// application and tests still start without external dependencies.
-			logger.warn("OpenAI API key is not configured; RAG features will be disabled.");
-			this.chatModel = null;
-			this.embeddingModel = null;
-			return;
-		}
+		String apiKey = properties.getApiKey();	
 
 		this.chatModel = OpenAiChatModel.builder()
 				.apiKey(apiKey)
 				.baseUrl(properties.getBaseUrl())
 				.modelName(properties.getChatModel())
-				.temperature(0.2)
+				.temperature(1.0)
 				.responseFormat("json_object")
 				.build();
 		this.embeddingModel = OpenAiEmbeddingModel.builder()

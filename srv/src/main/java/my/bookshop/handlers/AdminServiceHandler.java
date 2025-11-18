@@ -289,7 +289,7 @@ class AdminServiceHandler implements EventHandler {
 		if (is != null) {
 			try (BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
 				br.lines().skip(1).forEach((line) -> {
-					String[] p = line.split(";");
+					String[] p = line.split(";", -1);
 					cds.gen.my.bookshop.Books book = cds.gen.my.bookshop.Books.create();
 					book.setId(p[0]);
 					book.setTitle(p[1]);
@@ -299,6 +299,7 @@ class AdminServiceHandler implements EventHandler {
 					book.setPrice(BigDecimal.valueOf(Double.valueOf(p[5])));
 					book.setCurrencyCode(p[6]);
 					book.setGenreId(String.valueOf(p[7]));
+					book.setFullText(p[8]);
 
 					// separate transaction per line
 					context.getCdsRuntime().changeSetContext().run(ctx -> {

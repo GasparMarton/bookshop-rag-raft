@@ -6,6 +6,8 @@ import cds.gen.catalogservice.Books;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sap.cds.services.request.FeatureTogglesInfo;
 import java.util.stream.Stream;
+import my.bookshop.repository.bookshop.BookContentChunkRepository;
+import my.bookshop.repository.bookshop.BookshopBooksRepository;
 import my.bookshop.service.CatalogBusinessService;
 import org.junit.jupiter.api.Test;
 
@@ -29,7 +31,8 @@ class CatalogServiceHandlerTest {
 				null,
 				null,
 				new ObjectMapper(),
-				null);
+				(BookshopBooksRepository) null,
+				(BookContentChunkRepository) null);
 
 		service.applyDiscounts(Stream.of(book1, book2));
 
