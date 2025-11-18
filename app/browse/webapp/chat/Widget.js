@@ -42,6 +42,17 @@ sap.ui.define([
     }
   }
 
+  function isBrowseBooksRoute() {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    const hash = (window.location && window.location.hash) || '';
+    if (hash.startsWith('#Books-display')) {
+      return true;
+    }
+    return false;
+  }
+
   function destroyUI() {
     if (hashChangeHandler) {
       window.removeEventListener('hashchange', hashChangeHandler);
@@ -89,6 +100,16 @@ sap.ui.define([
 
     const sendBtn = panelElement.querySelector('#bs-chat-send');
     const textInput = panelElement.querySelector('#bs-chat-text');
+    const inputBar = panelElement.querySelector('#bs-chat-input');
+    const busyIndicator = el('div', {
+      id: 'bs-chat-input-busy',
+      role: 'status',
+      'aria-live': 'polite'
+    },
+    el('span', { class: 'bs-chat-spinner', 'aria-hidden': 'true' }),
+    el('span', null, 'Working on your answer...'));
+    busyIndicator.style.display = 'none';
+    inputBar.appendChild(busyIndicator);
 
     function addMessage(role, text) {
       const msg = el('div', { class: `bs-msg ${role}` }, text);
@@ -99,13 +120,20 @@ sap.ui.define([
 
     const state = ChatState.create();
 
+    function setBusy(isBusy) {
+      typing.style.display = isBusy ? 'block' : 'none';
+      busyIndicator.style.display = isBusy ? 'flex' : 'none';
+      textInput.disabled = isBusy;
+      sendBtn.disabled = isBusy;
+    }
+
     async function sendMessage() {
       const content = (textInput.value || '').trim();
       if (!content) return;
       addMessage('user', content);
       state.addUserMessage(content);
       textInput.value = '';
-      typing.style.display = 'block';
+      setBusy(true);
       try {
         const { reply, ids } = await ChatClient.callChat(content, state.getHistory());
         if (reply) {
@@ -116,10 +144,12 @@ sap.ui.define([
           const ok = await TableHelper.applyIDsToTable(ids);
           if (!ok) throw new Error('Table not ready');
         }
-      } catch (e) {
-        addMessage('bot', 'Open the Browse Books list to use filtering.');
+      } catch (err) {
+        // Surface a friendly error to the chat pane and keep console details for debugging.
+        console.error('Chat request failed', err);
+        addMessage('bot', 'Sorry, the assistant is unavailable right now. Please try again.');
       } finally {
-        typing.style.display = 'none';
+        setBusy(false);
       }
     }
 
@@ -138,15 +168,25 @@ sap.ui.define([
       addMessage('bot', 'Ask about books. I can answer and narrow the list when needed.');
     }, 800);
 
+    let readyCheckStart = Date.now();
+
     async function updateVisibility() {
       if (!toggleButton || !panelElement) {
         return;
       }
+      const onBrowsePage = isBrowseBooksRoute();
+      toggleButton.style.display = onBrowsePage ? 'block' : 'none';
+      if (!onBrowsePage) {
+        panelElement.style.display = 'none';
+        readyCheckStart = Date.now();
+        return;
+      }
       const fb = await findBooksFilterBar();
       const tbl = TableHelper.findBooksTable && TableHelper.findBooksTable();
-      const shouldShow = !!(fb && tbl);
-      toggleButton.style.display = shouldShow ? 'block' : 'none';
-      if (!shouldShow) panelElement.style.display = 'none';
+      const waitedTooLong = (Date.now() - readyCheckStart) > 5000;
+      const ready = waitedTooLong || !!(fb && tbl);
+      toggleButton.setAttribute('aria-busy', ready ? 'false' : 'true');
+      toggleButton.title = ready ? 'Chat' : 'Browse books list is still loading...';
     }
 
     setTimeout(updateVisibility, 1200);

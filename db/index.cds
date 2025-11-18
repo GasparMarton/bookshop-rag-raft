@@ -1,4 +1,5 @@
 using from './books';
+using from './book-chunks';
 using from './orders';
 using from './reviews';
 using from './notes';

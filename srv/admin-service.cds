@@ -10,10 +10,7 @@ extend my.Orders with changelog.changeTracked;
 service AdminService @(requires: 'admin') {
   entity Books          as
     projection on my.Books
-    excluding {
-      reviews,
-      embedding
-    }
+    excluding { review, chunks}
     actions {
       action addToOrder(order_ID : UUID, quantity : Integer) returns Orders;
     }
@@ -54,6 +51,9 @@ annotate AdminService.OrderItems with @cds.search: {book};
 annotate AdminService.Books with @cds.search: {
   descr,
   title
+};
+annotate AdminService.Books {
+  fullText @Core.MediaType: 'text/plain';
 };
 
 // Enable Fiori Draft for Orders

@@ -1,6 +1,6 @@
 namespace my.bookshop;
-using my.bookshop.Books from '../db/books';
+using my.bookshop.BookContentChunks from '../db/book-chunks';
 
-extend entity Books with {
+extend entity BookContentChunks with {
     embedding : Vector(1536);
 };

@@ -64,6 +64,8 @@
 
 #bs-chat-input {
   display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
   gap: 8px;
   padding: 10px;
   border-top: 1px solid #e5e5e5;
@@ -86,9 +88,31 @@
   cursor: pointer;
 }
 
+#bs-chat-input-busy {
+  display: none;
+  width: 100%;
+  font-size: 0.85rem;
+  color: #0a6ed1;
+  align-items: center;
+  gap: 6px;
+}
+
+#bs-chat-input-busy .bs-chat-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #0a6ed1;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  animation: bsChatSpin 0.9s linear infinite;
+}
+
+@keyframes bsChatSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .bs-typing { color: #666; font-style: italic; margin-top: 6px; display: none; }
 
 @media (max-width: 480px) {
   #bs-chat-panel { right: 10px; left: 10px; width: auto; }
 }
-

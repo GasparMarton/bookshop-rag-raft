@@ -46,9 +46,19 @@ AUTHOR_RAW=$(echo "$HEADER" | grep -m1 '^Author:' | sed 's/^Author:[ ]*//' | tr 
 TITLE=$(printf '%s' "$TITLE" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 AUTHOR_NAME=$(echo "$AUTHOR_RAW" | awk -F",| and " '{print $1}' | sed 's/^\s*//;s/\s*$//' | tr -d '\r')
 [ -z "$AUTHOR_NAME" ] && AUTHOR_NAME="Unknown"
-FULL_TEXT=$(cat "$TMPDIR/book.txt")
-
 urlenc() { printf '%s' "$1" | jq -s -R -r @uri; }
+upload_full_text() {
+  local entity_segment="$1"
+  [ -z "$entity_segment" ] && return
+  local upload_url="${ADMIN_BASE}/${entity_segment}/fullText/\$value"
+  local code
+  code=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "$upload_url" "${CURL_AUTH_ARGS[@]}" \
+    -H 'Content-Type: text/plain; charset=utf-8' --data-binary @"$TMPDIR/book.txt" || echo 0)
+  [ "$DEBUG" -eq 1 ] && echo "[debug] PUT $upload_url (fullText) -> HTTP $code" >&2
+  if ! [[ "$code" =~ ^2 ]]; then
+    echo "Warning: uploading fullText failed for $entity_segment (HTTP $code)" >&2
+  fi
+}
 
 # 1. Book existence check
 ENC_TITLE=$(urlenc "$TITLE")
@@ -164,16 +174,12 @@ BIND_PATH="/Authors('$AUTHOR_ID')"
 ESC_TITLE=$(jq -Rn --arg t "$TITLE" '$t')
 ESC_AUTHOR_ID=$(jq -Rn --arg a "$AUTHOR_ID" '$a')
 ESC_BIND=$(jq -Rn --arg b "$BIND_PATH" '$b')
-# Write fullText to a temporary file and escape newlines via jq -Rs
-cat "$TMPDIR/book.txt" > "$TMPDIR/full.txt"
-ESC_FULL=$(jq -Rs '.' < "$TMPDIR/full.txt")
 ESC_DESCR=$(jq -Rn --arg d "$DESCR" '$d')
 BOOK_PAYLOAD_FILE="$TMPDIR/payload.json"
 cat > "$BOOK_PAYLOAD_FILE" <<EOF
 {
   "title": $ESC_TITLE,
   "descr": $ESC_DESCR,
-  "fullText": $ESC_FULL,
   "author_ID": $ESC_AUTHOR_ID,
   "author@odata.bind": $ESC_BIND
 }
@@ -191,7 +197,9 @@ if [ -z "$BOOK_ID" ]; then
 else
   echo "Created Book ID: $BOOK_ID" >&2
   # 4. Activate draft (draftPrepare) if we have a Book ID
-  DRAFT_PREPARE_URL="${ADMIN_BASE}/Books(ID=${BOOK_ID},IsActiveEntity=false)/AdminService.draftPrepare"
+  BOOK_DRAFT_SEGMENT="Books(ID=${BOOK_ID},IsActiveEntity=false)"
+  upload_full_text "$BOOK_DRAFT_SEGMENT"
+  DRAFT_PREPARE_URL="${ADMIN_BASE}/${BOOK_DRAFT_SEGMENT}/AdminService.draftPrepare"
   [ "$DEBUG" -eq 1 ] && echo "[debug] POST $DRAFT_PREPARE_URL" >&2
   DRAFT_CODE=$(curl -sS -X POST "$DRAFT_PREPARE_URL" "${CURL_AUTH_ARGS[@]}" -H 'Accept: application/json' -o "$TMPDIR/book_draft_prepare.json" -w '%{http_code}' || echo 0)
   [ "$DEBUG" -eq 1 ] && echo "[debug] draftPrepare HTTP $DRAFT_CODE" >&2
@@ -201,7 +209,7 @@ else
     [ -s "$TMPDIR/book_draft_prepare.json" ] && sed 's/^/[resp] /' "$TMPDIR/book_draft_prepare.json" >&2
   fi
   # 5. Activate draft (draftActivate)
-  DRAFT_ACTIVATE_URL="${ADMIN_BASE}/Books(ID=${BOOK_ID},IsActiveEntity=false)/AdminService.draftActivate"
+  DRAFT_ACTIVATE_URL="${ADMIN_BASE}/${BOOK_DRAFT_SEGMENT}/AdminService.draftActivate"
   [ "$DEBUG" -eq 1 ] && echo "[debug] POST $DRAFT_ACTIVATE_URL" >&2
   ACTIVATE_CODE=$(curl -sS -X POST "$DRAFT_ACTIVATE_URL" "${CURL_AUTH_ARGS[@]}" -H 'Accept: application/json' -o "$TMPDIR/book_draft_activate.json" -w '%{http_code}' || echo 0)
   [ "$DEBUG" -eq 1 ] && echo "[debug] draftActivate HTTP $ACTIVATE_CODE" >&2

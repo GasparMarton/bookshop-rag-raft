@@ -8,7 +8,8 @@ service CatalogService @(requires: 'any') {
     entity Books       as projection on my.Books excluding {
         createdBy,
         modifiedBy,
-        embedding
+        fullText,
+        chunks
     } actions {
         action addReview(rating : Integer, title : String, text : String) returns Reviews;
     };
