@@ -35,8 +35,14 @@ sap.ui.define([
     if (!binding) {
       return false;
     }
-    if (!ids || ids.length === 0) {
+    if (!ids) {
+      // null or undefined -> clear filters (show all)
       binding.filter([]);
+      return true;
+    }
+    if (ids.length === 0) {
+      // empty array -> show nothing (filter by impossible ID)
+      binding.filter(new Filter("ID", FilterOperator.EQ, "___NO_MATCH___"));
       return true;
     }
     const filters = ids.map(function (id) {

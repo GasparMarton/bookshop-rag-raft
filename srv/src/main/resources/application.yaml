@@ -2,6 +2,7 @@
 logging:
   level:
     '[com.sap.cds.auditlog]': DEBUG
+    com.sap.cds.impl.persistence: DEBUG
 spring:
   config:
     import: optional:classpath:/application-local.properties

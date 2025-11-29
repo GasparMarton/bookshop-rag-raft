@@ -25,7 +25,8 @@ sap.ui.define([], function () {
         .map(function (b) { return b && b.ID; })
         .filter(function (id) { return !!id; });
     }
-    return { reply, ids };
+    const needsVectorSearch = obj && obj.needsVectorSearch === true;
+    return { reply, ids, needsVectorSearch };
   }
 
   return {

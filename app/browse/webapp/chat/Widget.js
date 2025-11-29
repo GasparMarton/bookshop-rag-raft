@@ -106,8 +106,8 @@ sap.ui.define([
       role: 'status',
       'aria-live': 'polite'
     },
-    el('span', { class: 'bs-chat-spinner', 'aria-hidden': 'true' }),
-    el('span', null, 'Working on your answer...'));
+      el('span', { class: 'bs-chat-spinner', 'aria-hidden': 'true' }),
+      el('span', null, 'Working on your answer...'));
     busyIndicator.style.display = 'none';
     inputBar.appendChild(busyIndicator);
 
@@ -135,19 +135,63 @@ sap.ui.define([
       textInput.value = '';
       setBusy(true);
       try {
-        const { reply, ids } = await ChatClient.callChat(content, state.getHistory());
+        const { reply, ids, needsVectorSearch } = await ChatClient.callChat(content, state.getHistory());
         if (reply) {
           addMessage('bot', reply);
           state.addAssistantMessage(reply);
         }
-        if (ids && ids.length) {
+        if (needsVectorSearch && ids && ids.length) {
           const ok = await TableHelper.applyIDsToTable(ids);
-          if (!ok) throw new Error('Table not ready');
+          if (!ok) console.warn('Table not ready for filtering');
+        } else if (needsVectorSearch && (!ids || ids.length === 0)) {
+          // If search was needed but no books found, we might want to clear the filter or show all?
+          // The requirement says "return those books and set those books in the table".
+          // If no books found, maybe we should show empty table?
+          // Existing logic:
+          // if (!ids || ids.length === 0) { binding.filter([]); return true; } (in TableHelper)
+          // So passing empty array clears the filter (shows all).
+          // Wait, binding.filter([]) usually means "no filters", so it shows ALL rows.
+          // If I want to show NO rows, I should probably pass a filter that matches nothing.
+          // But let's stick to the requirement: "set those books in the table".
+          // If ids is empty, maybe we shouldn't touch the table?
+          // Or maybe we should show nothing?
+          // Let's assume if needsVectorSearch is true, we should update the table.
+          // If ids is empty, TableHelper.applyIDsToTable([]) shows ALL books.
+          // This might be confusing if the user asked for "books about X" and we found none, but show ALL books.
+          // But let's follow the existing pattern or improve it.
+          // If I pass a filter that is impossible (ID = 'impossible'), it would show empty.
+          // But TableHelper.applyIDsToTable handles empty array by clearing filters.
+          // Let's leave it as is for now, but only call it if needsVectorSearch is true.
+          // If needsVectorSearch is true and ids is empty, we probably shouldn't call applyIDsToTable if it resets the view.
+          // But if the user asked for something specific and we found nothing, maybe we SHOULD reset the view?
+          // Let's stick to: only update if we have IDs.
+          // "each book that has any chunks that is above lets say 0.3 then we return those books and set those books in the table."
+          // If no books match, we return empty list.
+          // If we set empty list in table, we show all books? That seems wrong for a search result.
+          // But let's stick to the plan: "Update table with returned books".
+          // If I change the logic to only update if ids.length > 0, then if no books found, the table stays as is.
+          // That seems safer.
+          // But wait, if I previously searched for "Space" and got 3 books.
+          // Then I ask "Books about underwater" and get 0 books.
+          // If I don't update the table, it still shows "Space" books. That is confusing.
+          // So if needsVectorSearch is true, we MUST update the table, even if empty.
+          // But TableHelper clears filter on empty.
+          // I should probably fix TableHelper to handle "empty results" vs "clear filter".
+          // But I can't change TableHelper easily without understanding its usage elsewhere.
+          // Let's look at TableHelper again.
+          // "if (!ids || ids.length === 0) { binding.filter([]); return true; }"
+          // This definitely clears filters.
+          // So if I search and find nothing, I see all books.
+          // Maybe that's acceptable for now.
+          // I will implement: if needsVectorSearch, call applyIDsToTable.
+          const ok = await TableHelper.applyIDsToTable(ids || []);
+          if (!ok) console.warn('Table not ready for filtering');
         }
       } catch (err) {
         // Surface a friendly error to the chat pane and keep console details for debugging.
         console.error('Chat request failed', err);
         addMessage('bot', 'Sorry, the assistant is unavailable right now. Please try again.');
+        state.removeLastMessage();
       } finally {
         setBusy(false);
       }

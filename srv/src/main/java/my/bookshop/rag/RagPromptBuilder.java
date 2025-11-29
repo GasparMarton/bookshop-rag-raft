@@ -3,48 +3,41 @@ package my.bookshop.rag;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-
-import org.springframework.stereotype.Component;
-
-import dev.langchain4j.data.document.Metadata;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.input.Prompt;
 import dev.langchain4j.model.input.structured.StructuredPrompt;
 import dev.langchain4j.model.input.structured.StructuredPromptProcessor;
 
+import org.springframework.stereotype.Component;
+
 @Component
 public class RagPromptBuilder {
 
-	private static final Prompt SYSTEM_PROMPT = Prompt.from("""
-You are the SAP Bookshop research assistant for the browse-books page.
-Goals:
-1. Use the retrieved book context as factual evidence. Never invent details or cite books not provided.
-2. Consider the ongoing chat history and the latest user question when forming the reply.
-3. Quote book IDs in the response payload whenever a recommendation or citation references that book.
+	private static final Prompt SYSTEM_PROMPT = Prompt
+			.from("""
+					You are the SAP Bookshop research assistant for the browse-books page.
+					Goals:
+					1. Answer the user's question.
+					2. Determine if the user is asking for books or recommendations.
+					3. If the user is asking for books, set "vectorSearch" to true. Otherwise, set it to false.
 
-Response contract (always valid JSON):
-{
-  "reply": "<clear natural-language answer referencing the evidence>",
-  "ids": ["<book-id-1>", "<book-id-2>"]
-}
-Rules:
-- If you reference no books, return an empty ids array and say: Did not find any books like this in the database, but here are some recommendations from online:(recommend). In the (recommend) part include some books.
-- If you lack enough context, say so in reply and keep ids empty.
-- Do not include markdown, code fences, or extra keys.
-""");
+					Response contract (always valid JSON):
+					{
+					  "reply": "<clear natural-language answer>",
+					  "vectorSearch": <true/false>
+					}
+					Rules:
+					- If vectorSearch is true, the system will search for books and display them in a table. You do not need to list them in the reply unless you already know them from context.
+					- Do not include markdown, code fences, or extra keys.
+					""");
 
-	public List<ChatMessage> buildMessages(List<Map<String, Object>> history, List<TextSegment> contexts,
-			String message) {
-		String contextBlock = buildContextBlock(contexts);
-
+	public List<ChatMessage> buildMessages(List<Map<String, Object>> history, String message) {
 		List<ChatMessage> messages = new ArrayList<>();
 		messages.add(SYSTEM_PROMPT.toSystemMessage());
 		messages.addAll(toMessages(history));
-		messages.add(buildUserPrompt(contextBlock, message).toUserMessage());
+		messages.add(buildUserPrompt(message).toUserMessage());
 		return messages;
 	}
 
@@ -87,41 +80,14 @@ Rules:
 		return messages;
 	}
 
-	private String buildContextBlock(List<TextSegment> contexts) {
-		if (contexts.isEmpty()) {
-			return "No matching passages found.";
-		}
-		return contexts.stream()
-				.map(segment -> {
-					Metadata metadata = segment.metadata();
-					String title = metadata != null ? metadata.getString("title") : null;
-					Double similarity = metadata != null ? metadata.getDouble("similarity") : null;
-					String excerpt = metadata != null && metadata.getString("excerpt") != null
-							? metadata.getString("excerpt")
-							: segment.text();
-					return String.format("- Book: %s (ID %s, similarity %.3f)%n%s",
-							title == null ? "Unknown" : title,
-							similarity == null ? 0.0 : similarity,
-							excerpt == null ? "" : excerpt);
-				})
-				.collect(Collectors.joining("\n\n"));
-	}
-
-	private Prompt buildUserPrompt(String contextBlock, String question) {
-		return StructuredPromptProcessor.toPrompt(new RagUserPrompt(question, contextBlock));
+	private Prompt buildUserPrompt(String question) {
+		return StructuredPromptProcessor.toPrompt(new RagUserPrompt(question));
 	}
 
 	@StructuredPrompt({
 			"User question:",
-			"{{question}}",
-			"",
-			"Retrieved book evidence:",
-			"{{context}}",
-			"",
-			"Instructions:",
-			"- Reference only the books listed in the evidence block.",
-			"- If evidence is empty, explain that no relevant passages were found.",
-			"- Keep the final reply short, confident, and grounded in the evidence."
+			"{{question}}"
 	})
-	private record RagUserPrompt(String question, String context) {}
+	private record RagUserPrompt(String question) {
+	}
 }

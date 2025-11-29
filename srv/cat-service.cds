@@ -43,6 +43,7 @@ service CatalogService @(requires: 'any') {
     type ChatResult : {
         reply : String;
         books : many ChatResultBook;
+        needsVectorSearch : Boolean;
     };
     
     // Conversational action: always returns text; may also return matching books

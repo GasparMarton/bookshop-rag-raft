@@ -13,5 +13,7 @@ public interface RagAiClient {
 
 	double[] embed(String text);
 
+	List<double[]> embed(List<String> texts);
+
 	String chat(List<ChatMessage> messages);
 }

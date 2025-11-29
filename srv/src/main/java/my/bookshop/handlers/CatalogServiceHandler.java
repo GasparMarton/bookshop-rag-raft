@@ -18,7 +18,6 @@ import com.sap.cds.services.handler.annotations.ServiceName;
 import java.util.List;
 import java.util.stream.Stream;
 import my.bookshop.service.CatalogBusinessService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -27,7 +26,6 @@ class CatalogServiceHandler implements EventHandler {
 
 	private final CatalogBusinessService catalogService;
 
-	@Autowired
 	CatalogServiceHandler(CatalogBusinessService catalogService) {
 		this.catalogService = catalogService;
 	}

@@ -1,8 +1,8 @@
 package my.bookshop.repository.bookshop;
 
-import static cds.gen.my.bookshop.Bookshop_.BOOK_CONTENT_CHUNKS;
+import static cds.gen.my.bookshop.Bookshop_.BOOK_CHUNKS;
 
-import cds.gen.my.bookshop.BookContentChunks;
+import cds.gen.my.bookshop.BookChunks;
 import com.sap.cds.CdsVector;
 import com.sap.cds.Result;
 import com.sap.cds.Row;
@@ -47,15 +47,15 @@ public class BookContentChunkRepository {
 				continue;
 			}
 			Map<String, Object> row = new HashMap<>();
-			row.put(BookContentChunks.BOOK_ID, bookId);
-			row.put(BookContentChunks.CHUNK_INDEX, request.chunk().index());
-			row.put(BookContentChunks.SOURCE, request.chunk().source().name());
-			row.put(BookContentChunks.CONTENT, request.chunk().text());
-			row.put(BookContentChunks.EMBEDDING, toBigDecimals(request.embedding()));
+			row.put(BookChunks.BOOK_ID, bookId);
+			row.put(BookChunks.CHUNK_INDEX, request.chunk().index());
+			row.put(BookChunks.SOURCE, request.chunk().source().name());
+			row.put(BookChunks.TEXT, request.chunk().text());
+			row.put(BookChunks.EMBEDDING, toBigDecimals(request.embedding()));
 			entries.add(row);
 		}
 		if (!entries.isEmpty()) {
-			db.run(Insert.into(BOOK_CONTENT_CHUNKS).entries(entries));
+			db.run(Insert.into(BOOK_CHUNKS).entries(entries));
 		}
 	}
 
@@ -63,12 +63,12 @@ public class BookContentChunkRepository {
 		if (bookId == null || bookId.isBlank()) {
 			return;
 		}
-		db.run(Delete.from(BOOK_CONTENT_CHUNKS)
+		db.run(Delete.from(BOOK_CHUNKS)
 				.where(chunk -> chunk.book_ID().eq(bookId)));
 	}
 
 	public void deleteAll() {
-		db.run(Delete.from(BOOK_CONTENT_CHUNKS));
+		db.run(Delete.from(BOOK_CHUNKS));
 	}
 
 	public List<BookChunkMatch> findSimilarChunks(double[] vector, int limit) {
@@ -76,13 +76,13 @@ public class BookContentChunkRepository {
 		if (cdsVector == null) {
 			return List.of();
 		}
-		var similarity = CQL.cosineSimilarity(CQL.get(BookContentChunks.EMBEDDING), CQL.val(cdsVector));
-		CqnSelect select = Select.from(BOOK_CONTENT_CHUNKS)
+		var similarity = CQL.cosineSimilarity(CQL.get(BookChunks.EMBEDDING), CQL.val(cdsVector));
+		CqnSelect select = Select.from(BOOK_CHUNKS)
 				.columns(chunk -> chunk.ID(),
 						chunk -> chunk.book_ID(),
 						chunk -> chunk.chunkIndex(),
 						chunk -> chunk.source(),
-						chunk -> chunk.content(),
+						chunk -> chunk.text(),
 						chunk -> similarity.as("similarity"))
 				.where(chunk -> chunk.embedding().isNotNull())
 				.orderBy(chunk -> chunk.get("similarity").desc())
@@ -91,11 +91,11 @@ public class BookContentChunkRepository {
 		List<BookChunkMatch> matches = new ArrayList<>();
 		for (Row row : result) {
 			matches.add(new BookChunkMatch(
-					asString(row, BookContentChunks.ID),
-					asString(row, BookContentChunks.BOOK_ID),
-					defaultInt((Number) row.get(BookContentChunks.CHUNK_INDEX)),
-					BookChunkSource.from(asString(row, BookContentChunks.SOURCE)),
-					asString(row, BookContentChunks.CONTENT),
+					asString(row, BookChunks.ID),
+					asString(row, BookChunks.BOOK_ID),
+					defaultInt((Number) row.get(BookChunks.CHUNK_INDEX)),
+					BookChunkSource.from(asString(row, BookChunks.SOURCE)),
+					asString(row, BookChunks.TEXT),
 					toDouble((Number) row.get("similarity"))));
 		}
 		return matches;

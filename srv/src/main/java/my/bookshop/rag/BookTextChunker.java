@@ -2,7 +2,9 @@ package my.bookshop.rag;
 
 import cds.gen.my.bookshop.Books;
 
+import java.io.IOException;
 import java.io.Reader;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,8 +14,8 @@ import java.util.List;
  */
 public class BookTextChunker {
 
-	private static final int DEFAULT_CHUNK_SIZE = 900;
-	private static final int DEFAULT_CHUNK_OVERLAP = 150;
+	private static final int DEFAULT_CHUNK_SIZE = 4000;
+	private static final int DEFAULT_CHUNK_OVERLAP = 400;
 
 	private final int chunkSize;
 	private final int chunkOverlap;
@@ -23,7 +25,7 @@ public class BookTextChunker {
 	}
 
 	public BookTextChunker(int chunkSize, int chunkOverlap) {
-		this.chunkSize = Math.max(200, chunkSize);
+		this.chunkSize = Math.max(1, chunkSize);
 		this.chunkOverlap = Math.max(0, Math.min(chunkOverlap, this.chunkSize - 1));
 	}
 
@@ -35,11 +37,15 @@ public class BookTextChunker {
 		int index = 0;
 		index = appendSection(chunks, index, BookChunkSource.TITLE, book.getTitle());
 		index = appendSection(chunks, index, BookChunkSource.DESCRIPTION, book.getDescr());
-		appendSectionReader(chunks, index, BookChunkSource.BODY, book.getFullText());
+		appendSectionReader(chunks, index, BookChunkSource.BODY,
+				book.getFullText() != null ? new StringReader(book.getFullText()) : null);
 		return chunks;
 	}
 
 	private int appendSection(List<BookTextChunk> accumulator, int index, BookChunkSource source, String raw) {
+		if (raw == null) {
+			return index;
+		}
 		String text = raw.toString();
 		if (text.isEmpty()) {
 			return index;
@@ -55,7 +61,21 @@ public class BookTextChunker {
 	}
 
 	private int appendSectionReader(List<BookTextChunk> accumulator, int index, BookChunkSource source, Reader raw) {
-		String text = raw != null ? raw.toString() : "";
+		if (raw == null) {
+			return index;
+		}
+		StringBuilder textBuilder = new StringBuilder();
+		try (Reader reader = raw) {
+			char[] buffer = new char[1024];
+			int numChars;
+			while ((numChars = reader.read(buffer)) >= 0) {
+				textBuilder.append(buffer, 0, numChars);
+			}
+		} catch (IOException e) {
+			throw new RuntimeException("Failed to read book text", e);
+		}
+		String text = textBuilder.toString();
+
 		if (text.isEmpty()) {
 			return index;
 		}

@@ -31,13 +31,26 @@ public class RagRetrievalService {
 	}
 
 	public List<TextSegment> similaritySearch(double[] vector) {
+		return similaritySearch(vector, 0.0);
+	}
+
+	public List<TextSegment> similaritySearch(double[] vector, double minSimilarity) {
 		if (chunkRepository == null || bookshopBooksRepository == null) {
 			return List.of();
 		}
-		List<BookChunkMatch> matches = chunkRepository.findSimilarChunks(vector, 12);
+		List<BookChunkMatch> matches = chunkRepository.findSimilarChunks(vector, 2);
 		if (matches.isEmpty()) {
 			return List.of();
 		}
+		// Filter by similarity
+		matches = matches.stream()
+				.filter(m -> m.similarity() >= minSimilarity)
+				.toList();
+
+		if (matches.isEmpty()) {
+			return List.of();
+		}
+
 		Set<String> bookIds = matches.stream()
 				.map(BookChunkMatch::bookId)
 				.collect(Collectors.toSet());
@@ -56,8 +69,8 @@ public class RagRetrievalService {
 		if (title != null && !title.isBlank()) {
 			text.append(title.trim()).append(" - ");
 		}
-		if (match.content() != null && !match.content().isBlank()) {
-			text.append(match.content());
+		if (match.text() != null && !match.text().isBlank()) {
+			text.append(match.text());
 		} else if (book != null && book.getDescr() != null && !book.getDescr().isBlank()) {
 			text.append(book.getDescr());
 		} else {
@@ -76,8 +89,8 @@ public class RagRetrievalService {
 		if (book != null && book.getDescr() != null) {
 			metadata.put("excerpt", book.getDescr());
 		}
-		if (match.content() != null) {
-			metadata.put("chunk", match.content());
+		if (match.text() != null) {
+			metadata.put("chunk", match.text());
 		}
 		return TextSegment.from(text.toString(), metadata);
 	}

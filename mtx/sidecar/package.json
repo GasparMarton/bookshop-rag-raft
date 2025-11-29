@@ -7,13 +7,21 @@
     "express": "^4"
   },
   "devDependencies": {
-    "@cap-js/sqlite": "^2"
+    "@cap-js/hana": "^2"
   },
   "engines": {
     "node": "^22"
   },
   "cds": {
-    "profiles": ["mtx-sidecar", "java"]
+    "profiles": [
+      "mtx-sidecar",
+      "java"
+    ],
+    "requires": {
+      "db": {
+        "kind": "hana"
+      }
+    }
   },
   "scripts": {
     "start": "cds-serve",

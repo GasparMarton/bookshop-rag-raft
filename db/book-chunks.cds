@@ -6,14 +6,14 @@ using my.bookshop.Books from './books';
 /**
  * Stores individual semantic chunks of book content along with their metadata.
  */
-entity BookContentChunks : cuid, managed {
+entity BookChunks : cuid, managed {
     book       : Association to Books;
     chunkIndex : Integer;
     source     : String(40);
-    content    : LargeString;
+    text       : LargeString;
 }
 
 extend Books with {
-    chunks : Composition of many BookContentChunks
+    chunks : Composition of many BookChunks
         on chunks.book = $self;
 };

@@ -7,10 +7,8 @@
             "kind": "persistent-outbox"
         },
         "db": {
-            "[production]": {
-                "kind": "hana",
-                "model": "db-hana"
-            }
+            "kind": "hana",
+            "model": "db-hana"
         }
     },
     "profile": "with-mtx-sidecar",

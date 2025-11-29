@@ -58,16 +58,38 @@ public class BookEmbeddingService {
 			chunkRepository.deleteChunksForBook(book.getId());
 			return;
 		}
+
 		List<ChunkPersistRequest> payloads = new ArrayList<>();
-		for (BookTextChunk chunk : chunks) {
-			double[] vector = aiClient.embed(chunk.text());
-			if (vector.length == 0) {
-				logger.warn("Embedding failed for book {} chunk {} ({})",
-						book.getTitle(), chunk.index(), chunk.source());
-				continue;
+		int batchSize = 500; // Process in batches to avoid hitting API limits
+
+		for (int i = 0; i < chunks.size(); i += batchSize) {
+			int end = Math.min(chunks.size(), i + batchSize);
+			List<BookTextChunk> batchChunks = chunks.subList(i, end);
+			List<String> batchTexts = batchChunks.stream().map(BookTextChunk::text).toList();
+
+			try {
+				List<double[]> batchVectors = aiClient.embed(batchTexts);
+
+				if (batchVectors.size() != batchChunks.size()) {
+					logger.warn("Mismatch in embedding count for book {} batch {}-{}. Expected {}, got {}",
+							book.getTitle(), i, end, batchChunks.size(), batchVectors.size());
+					continue;
+				}
+
+				for (int j = 0; j < batchChunks.size(); j++) {
+					double[] vector = batchVectors.get(j);
+					if (vector.length > 0) {
+						payloads.add(new ChunkPersistRequest(batchChunks.get(j), vector));
+					}
+				}
+			} catch (Exception e) {
+				logger.error("Batch embedding failed for book {} batch {}-{}: {}",
+						book.getTitle(), i, end, e.getMessage());
+				// Continue to next batch? or fail?
+				// Current logic: continue, so we save what we can.
 			}
-			payloads.add(new ChunkPersistRequest(chunk, vector));
 		}
+
 		if (payloads.isEmpty()) {
 			logger.warn("Embedding failed for book {}", book.getTitle());
 			chunkRepository.deleteChunksForBook(book.getId());

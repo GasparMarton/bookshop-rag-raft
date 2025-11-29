@@ -1,6 +1,5 @@
 package my.bookshop.service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -183,23 +182,54 @@ public class CatalogBusinessService {
 		String message = context.getMessage();
 		if (message == null || message.isBlank()) {
 			logger.debug("Chat request rejected because message was empty.");
-			return chatResult("Please enter a question about the catalog.", List.of());
+			return chatResult("Please enter a question about the catalog.", List.of(), false);
 		}
 
 		List<Map<String, Object>> historyTurns = parseHistory(context.getHistory());
-		String queryText = ragPromptBuilder.buildQueryText(message, historyTurns);
-		double[] vector = ragRetrievalService.embedForQuery(queryText.isBlank() ? message : queryText);
-		List<TextSegment> contexts = ragRetrievalService.similaritySearch(vector);
-		var messages = ragPromptBuilder.buildMessages(historyTurns, contexts, message);
 
+		// Single prompt call
+		var messages = ragPromptBuilder.buildMessages(historyTurns, message);
 		String raw = aiClient.chat(messages);
 		if (raw == null || raw.isBlank()) {
 			logger.warn("RAG chat returned empty response; sending fallback to client.");
-			return chatResult("RAG is currently unavailable. Please try again later or refine your question.", List.of());
+			return chatResult("RAG is currently unavailable. Please try again later or refine your question.",
+					List.of(), false);
 		}
-		ChatPayload payload = parsePayload(raw);
 
-		return chatResult(payload.reply().isBlank() ? raw : payload.reply(), payload.books());
+		ChatPayload payload = parsePayload(raw);
+		String reply = payload.reply().isBlank() ? raw : payload.reply();
+		boolean needsVectorSearch = payload.vectorSearch();
+		List<ChatResultBook> resultBooks = List.of();
+
+		if (needsVectorSearch) {
+			String queryText = ragPromptBuilder.buildQueryText(message, historyTurns);
+			double[] vector = ragRetrievalService.embedForQuery(queryText.isBlank() ? message : queryText);
+			List<TextSegment> contexts = ragRetrievalService.similaritySearch(vector, 0.3); // Threshold 0.3
+
+			// Map contexts to ChatResultBook (we need to fetch full books or map from
+			// context)
+			// RagRetrievalService.similaritySearch returns TextSegment.
+			// But we need ChatResultBook.
+			// RagRetrievalService internally fetches summaries.
+			// We might need to fetch the books again or expose a method to get books.
+			// Actually, RagRetrievalService.similaritySearch uses
+			// chunkRepository.findSimilarChunks ->
+			// bookshopBooksRepository.findSummariesByIds.
+			// It returns TextSegments.
+			// We need the IDs to fetch ChatResultBooks (which are projections).
+			// Let's extract IDs from TextSegments metadata.
+			List<String> bookIds = contexts.stream()
+					.map(s -> s.metadata().getString("bookId"))
+					.filter(id -> id != null && !id.isBlank())
+					.distinct()
+					.toList();
+
+			if (!bookIds.isEmpty()) {
+				resultBooks = repository.getChatResultBooks(bookIds);
+			}
+		}
+
+		return chatResult(reply, resultBooks, needsVectorSearch);
 	}
 
 	private List<Map<String, Object>> parseHistory(String rawHistory) {
@@ -217,28 +247,34 @@ public class CatalogBusinessService {
 
 	private ChatPayload parsePayload(String raw) {
 		try {
-			JsonNode node = objectMapper.readTree(raw);
-			String reply = node.path("reply").asText();
-			List<String> ids = new ArrayList<>();
-			for (JsonNode idNode : node.withArray("ids")) {
-				ids.add(idNode.asText());
+			String json = raw;
+			if (json.startsWith("```json")) {
+				json = json.substring(7);
+			} else if (json.startsWith("```")) {
+				json = json.substring(3);
 			}
-			List<ChatResultBook> resultBooks = ids.isEmpty()
-					? List.of()
-					: repository.getChatResultBooks(ids);
-			return new ChatPayload(reply, resultBooks);
+			if (json.endsWith("```")) {
+				json = json.substring(0, json.length() - 3);
+			}
+
+			JsonNode node = objectMapper.readTree(json);
+			String reply = node.path("reply").asText();
+			boolean vectorSearch = node.path("vectorSearch").asBoolean(false);
+			return new ChatPayload(reply, vectorSearch);
 		} catch (Exception e) {
 			logger.warn("Failed to parse chat payload returned by RAG; sending raw text instead.", e);
-			return new ChatPayload(raw, List.of());
+			return new ChatPayload(raw, false);
 		}
 	}
 
-	private record ChatPayload(String reply, List<ChatResultBook> books) {}
+	private record ChatPayload(String reply, boolean vectorSearch) {
+	}
 
-	private ChatResult chatResult(String reply, List<ChatResultBook> resultBooks) {
+	private ChatResult chatResult(String reply, List<ChatResultBook> resultBooks, boolean needsVectorSearch) {
 		ChatResult result = ChatResult.create();
 		result.setReply(reply);
 		result.setBooks(resultBooks == null ? List.of() : resultBooks);
+		result.setNeedsVectorSearch(needsVectorSearch);
 		return result;
 	}
 

@@ -8,7 +8,6 @@ public record BookChunkMatch(
 		String bookId,
 		int chunkIndex,
 		BookChunkSource source,
-		String content,
+		String text,
 		double similarity) {
 }
-

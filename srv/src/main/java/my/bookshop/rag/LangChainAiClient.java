@@ -29,7 +29,7 @@ public class LangChainAiClient implements RagAiClient {
 		this.usageTracker = usageTracker;
 		this.chatModelName = properties.getChatModel();
 		this.embeddingModelName = properties.getEmbeddingModel();
-		String apiKey = properties.getApiKey();	
+		String apiKey = properties.getApiKey();
 
 		this.chatModel = OpenAiChatModel.builder()
 				.apiKey(apiKey)
@@ -56,7 +56,32 @@ public class LangChainAiClient implements RagAiClient {
 		if (embedding == null) {
 			return new double[0];
 		}
-		float[] vector = embedding.vector();
+		return toDoubleArray(embedding.vector());
+	}
+
+	@Override
+	public List<double[]> embed(List<String> texts) {
+		if (texts == null || texts.isEmpty() || embeddingModel == null) {
+			return List.of();
+		}
+		List<dev.langchain4j.data.segment.TextSegment> segments = texts.stream()
+				.map(dev.langchain4j.data.segment.TextSegment::from)
+				.toList();
+
+		Response<List<Embedding>> response = embeddingModel.embedAll(segments);
+		trackUsage(embeddingModelName, response);
+
+		if (response == null || response.content() == null) {
+			return List.of();
+		}
+
+		return response.content().stream()
+				.map(Embedding::vector)
+				.map(this::toDoubleArray)
+				.toList();
+	}
+
+	private double[] toDoubleArray(float[] vector) {
 		double[] result = new double[vector.length];
 		for (int i = 0; i < vector.length; i++) {
 			result[i] = vector[i];

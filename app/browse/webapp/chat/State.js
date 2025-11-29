@@ -13,6 +13,9 @@ sap.ui.define([], function () {
         },
         addAssistantMessage: function (content) {
           history.push({ role: "assistant", content: String(content || "") });
+        },
+        removeLastMessage: function () {
+          history.pop();
         }
       };
     }
