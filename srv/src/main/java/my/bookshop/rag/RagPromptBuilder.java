@@ -29,7 +29,7 @@ public class RagPromptBuilder {
 					  "vectorSearch": <true/false>
 					}
 					Rules:
-					- If vectorSearch is true, the system will search for books and display them in a table. You do not need to list them in the reply unless you already know them from context.
+					- If vectorSearch is true, the system will search for books and display them in a table. Your reply should introduce these results as if they are already presented to the user (e.g., "Here are some books about space"). Do not say "I will search" or ask for confirmation.
 					- Do not include markdown, code fences, or extra keys.
 					""");
 

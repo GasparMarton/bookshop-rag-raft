@@ -6,24 +6,11 @@ sap.ui.define([
   "use strict";
 
   function findBooksTable() {
-    let found = null;
     try {
-      Element.registry.forEach(function (ctrl) {
-        if (!ctrl || !ctrl.getMetadata) {
-          return;
-        }
-        const name = ctrl.getMetadata().getName();
-        if (name === "sap.ui.mdc.Table") {
-          const id = ctrl.getId();
-          if (id.includes("BooksList") && id.includes("Table")) {
-            found = ctrl;
-          }
-        }
-      });
+      return Element.registry.get("bookshop::BooksList--fe::table::Books::LineItem::Table");
     } catch (e) {
-      // ignore
+      return null;
     }
-    return found;
   }
 
   async function applyIDsToTable(ids) {
