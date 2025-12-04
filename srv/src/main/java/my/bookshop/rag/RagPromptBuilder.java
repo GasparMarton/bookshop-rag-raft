@@ -6,6 +6,7 @@ import java.util.Map;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.input.Prompt;
 import dev.langchain4j.model.input.structured.StructuredPrompt;
 import dev.langchain4j.model.input.structured.StructuredPromptProcessor;
@@ -19,10 +20,9 @@ public class RagPromptBuilder {
 			.from("""
 					You are the SAP Bookshop research assistant for the browse-books page.
 					Goals:
-					1. Answer the user's question.
+					1. Answer the user's question using the provided context if available.
 					2. Determine if the user is asking for books or recommendations.
 					3. If the user is asking for books, set "vectorSearch" to true. Otherwise, set it to false.
-
 					Response contract (always valid JSON):
 					{
 					  "reply": "<clear natural-language answer>",
@@ -33,11 +33,22 @@ public class RagPromptBuilder {
 					- Do not include markdown, code fences, or extra keys.
 					""");
 
-	public List<ChatMessage> buildMessages(List<Map<String, Object>> history, String message) {
+	public List<ChatMessage> buildMessages(List<Map<String, Object>> history, String message,
+			List<TextSegment> context) {
 		List<ChatMessage> messages = new ArrayList<>();
 		messages.add(SYSTEM_PROMPT.toSystemMessage());
 		messages.addAll(toMessages(history));
-		messages.add(buildUserPrompt(message).toUserMessage());
+
+		StringBuilder contextText = new StringBuilder();
+		if (context != null && !context.isEmpty()) {
+			contextText.append("Context:\n");
+			for (TextSegment segment : context) {
+				contextText.append(segment.text()).append("\n\n");
+			}
+			contextText.append("\nQuestion: ");
+		}
+
+		messages.add(buildUserPrompt(contextText.toString() + message).toUserMessage());
 		return messages;
 	}
 

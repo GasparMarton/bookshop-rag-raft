@@ -60,7 +60,7 @@ public class BookEmbeddingService {
 		}
 
 		List<ChunkPersistRequest> payloads = new ArrayList<>();
-		int batchSize = 500; // Process in batches to avoid hitting API limits
+		int batchSize = 10; // Process in batches to avoid hitting API limits
 
 		for (int i = 0; i < chunks.size(); i += batchSize) {
 			int end = Math.min(chunks.size(), i + batchSize);

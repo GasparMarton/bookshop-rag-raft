@@ -33,7 +33,11 @@ sap.ui.define([
       return true;
     }
     const filters = ids.map(function (id) {
-      return new Filter("ID", FilterOperator.EQ, id);
+      return new Filter({
+        path: "ID",
+        operator: FilterOperator.EQ,
+        value1: id
+      });
     });
     const orFilter = new Filter({ filters: filters, and: false });
     binding.filter(orFilter);

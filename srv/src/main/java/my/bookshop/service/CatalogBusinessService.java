@@ -187,8 +187,16 @@ public class CatalogBusinessService {
 
 		List<Map<String, Object>> historyTurns = parseHistory(context.getHistory());
 
-		// Single prompt call
-		var messages = ragPromptBuilder.buildMessages(historyTurns, message);
+		// 1. Retrieve relevant chunks first
+		String queryText = ragPromptBuilder.buildQueryText(message, historyTurns);
+		double[] vector = ragRetrievalService.embedForQuery(queryText.isBlank() ? message : queryText);
+		List<TextSegment> allContexts = ragRetrievalService.similaritySearch(vector, 0.3); // Threshold 0.3
+
+		// 2. Select top 5 for LLM context
+		List<TextSegment> llmContext = allContexts.stream().limit(5).toList();
+
+		// 3. Call LLM with context
+		var messages = ragPromptBuilder.buildMessages(historyTurns, message, llmContext);
 		String raw = aiClient.chat(messages);
 		if (raw == null || raw.isBlank()) {
 			logger.warn("RAG chat returned empty response; sending fallback to client.");
@@ -201,24 +209,9 @@ public class CatalogBusinessService {
 		boolean needsVectorSearch = payload.vectorSearch();
 		List<ChatResultBook> resultBooks = List.of();
 
-		if (needsVectorSearch) {
-			String queryText = ragPromptBuilder.buildQueryText(message, historyTurns);
-			double[] vector = ragRetrievalService.embedForQuery(queryText.isBlank() ? message : queryText);
-			List<TextSegment> contexts = ragRetrievalService.similaritySearch(vector, 0.3); // Threshold 0.3
-
-			// Map contexts to ChatResultBook (we need to fetch full books or map from
-			// context)
-			// RagRetrievalService.similaritySearch returns TextSegment.
-			// But we need ChatResultBook.
-			// RagRetrievalService internally fetches summaries.
-			// We might need to fetch the books again or expose a method to get books.
-			// Actually, RagRetrievalService.similaritySearch uses
-			// chunkRepository.findSimilarChunks ->
-			// bookshopBooksRepository.findSummariesByIds.
-			// It returns TextSegments.
-			// We need the IDs to fetch ChatResultBooks (which are projections).
-			// Let's extract IDs from TextSegments metadata.
-			List<String> bookIds = contexts.stream()
+		// 4. If vectorSearch is true, use the FULL list of contexts for the table
+		if (needsVectorSearch && !allContexts.isEmpty()) {
+			List<String> bookIds = allContexts.stream()
 					.map(s -> s.metadata().getString("bookId"))
 					.filter(id -> id != null && !id.isBlank())
 					.distinct()

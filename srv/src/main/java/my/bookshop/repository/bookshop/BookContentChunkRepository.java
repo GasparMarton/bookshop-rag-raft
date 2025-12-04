@@ -30,8 +30,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class BookContentChunkRepository {
 
-	private static final int DEFAULT_LIMIT = 12;
-
 	@Autowired
 	private PersistenceService db;
 
@@ -71,7 +69,7 @@ public class BookContentChunkRepository {
 		db.run(Delete.from(BOOK_CHUNKS));
 	}
 
-	public List<BookChunkMatch> findSimilarChunks(double[] vector, int limit) {
+	public List<BookChunkMatch> findSimilarChunks(double[] vector, int limit, double minSimilarity) {
 		CdsVector cdsVector = toVector(vector);
 		if (cdsVector == null) {
 			return List.of();
@@ -84,9 +82,9 @@ public class BookContentChunkRepository {
 						chunk -> chunk.source(),
 						chunk -> chunk.text(),
 						chunk -> similarity.as("similarity"))
-				.where(chunk -> chunk.embedding().isNotNull())
+				.where(chunk -> chunk.embedding().isNotNull().and(similarity.ge(minSimilarity)))
 				.orderBy(chunk -> chunk.get("similarity").desc())
-				.limit(limit > 0 ? limit : DEFAULT_LIMIT);
+				.limit(limit);
 		Result result = db.run(select);
 		List<BookChunkMatch> matches = new ArrayList<>();
 		for (Row row : result) {

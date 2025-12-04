@@ -1,5 +1,6 @@
 package my.bookshop.rag;
 
+import java.time.Duration;
 import java.util.List;
 
 import dev.langchain4j.data.embedding.Embedding;
@@ -42,6 +43,7 @@ public class LangChainAiClient implements RagAiClient {
 				.apiKey(apiKey)
 				.baseUrl(properties.getBaseUrl())
 				.modelName(properties.getEmbeddingModel())
+				.timeout(Duration.ofSeconds(120))
 				.build();
 	}
 

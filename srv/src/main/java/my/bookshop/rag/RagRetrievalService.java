@@ -38,15 +38,9 @@ public class RagRetrievalService {
 		if (chunkRepository == null || bookshopBooksRepository == null) {
 			return List.of();
 		}
-		List<BookChunkMatch> matches = chunkRepository.findSimilarChunks(vector, 2);
-		if (matches.isEmpty()) {
-			return List.of();
-		}
-		// Filter by similarity
-		matches = matches.stream()
-				.filter(m -> m.similarity() >= minSimilarity)
-				.toList();
-
+		// Use a high limit (e.g., 100) to get "all" relevant chunks above the threshold
+		List<BookChunkMatch> matches = chunkRepository.findSimilarChunks(vector, 1000,
+				minSimilarity > 0 ? minSimilarity : 0.3);
 		if (matches.isEmpty()) {
 			return List.of();
 		}

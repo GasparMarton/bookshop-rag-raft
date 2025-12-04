@@ -39,10 +39,11 @@ class AdminBookEmbeddingHandler implements EventHandler {
 		deleteEmbeddings(books);
 	}
 
-	@On
+	@On(event = RebuildEmbeddingsContext.CDS_NAME)
 	public void rebuildEmbeddings(RebuildEmbeddingsContext context) {
 		embeddingService.deleteAllEmbeddings();
 		embeddingService.rebuildAll();
+		context.setCompleted();
 	}
 
 	private void reindexBooks(List<Books> books) {

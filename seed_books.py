@@ -15,7 +15,7 @@ def get_or_create_author(name):
     
     # Check if author exists
     try:
-        response = requests.get(url, params={"$filter": f"name eq '{name}'"}, auth=AUTH)
+        response = requests.get(url, params={"$search": name}, auth=AUTH)
         if response.status_code == 200:
             results = response.json().get('value', [])
             if results:
@@ -47,8 +47,30 @@ def create_book(title, author_id, text):
     }
     response = requests.post(url, json=payload, auth=AUTH)
     if response.status_code == 201:
-        print(f"Book '{title}' created.")
-        return response.json()['ID']
+        book_data = response.json()
+        book_id = book_data['ID']
+        print(f"Book draft created with ID: {book_id}")
+
+        # Draft Activation Flow
+        draft_segment = f"Books(ID={book_id},IsActiveEntity=false)"
+        
+        # 1. draftPrepare
+        prepare_url = f"{CAP_SERVICE_URL}/{draft_segment}/AdminService.draftPrepare"
+        print(f"Preparing draft: {prepare_url}")
+        resp_prep = requests.post(prepare_url, json={}, auth=AUTH)
+        if not (200 <= resp_prep.status_code < 300):
+             print(f"Warning: draftPrepare failed: {resp_prep.status_code} {resp_prep.text}")
+
+        # 2. draftActivate
+        activate_url = f"{CAP_SERVICE_URL}/{draft_segment}/AdminService.draftActivate"
+        print(f"Activating draft: {activate_url}")
+        resp_act = requests.post(activate_url, json={}, auth=AUTH)
+        if 200 <= resp_act.status_code < 300:
+            print(f"Book '{title}' activated successfully.")
+            return book_id
+        else:
+             raise Exception(f"Failed to activate book (Status {resp_act.status_code}): {resp_act.text}")
+
     else:
         raise Exception(f"Failed to create book (Status {response.status_code}): {response.text}")
 
