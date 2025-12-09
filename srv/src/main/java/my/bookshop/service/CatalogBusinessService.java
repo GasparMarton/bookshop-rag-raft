@@ -8,6 +8,7 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -28,6 +29,7 @@ import cds.gen.catalogservice.Books;
 import cds.gen.catalogservice.BooksAddReviewContext;
 import cds.gen.catalogservice.Books_;
 import cds.gen.catalogservice.ChatContext;
+import cds.gen.catalogservice.ChatFtContext;
 import cds.gen.catalogservice.ChatResult;
 import cds.gen.catalogservice.ChatResultBook;
 import cds.gen.catalogservice.Reviews;
@@ -57,6 +59,7 @@ public class CatalogBusinessService {
 	private final RatingCalculator ratingCalculator;
 	private final BookEmbeddingService embeddingService;
 	private final RagAiClient aiClient;
+	private final RagAiClient raftClient;
 	private final ObjectMapper objectMapper;
 	private final CqnAnalyzer analyzer;
 	private final RagRetrievalService ragRetrievalService;
@@ -65,7 +68,8 @@ public class CatalogBusinessService {
 	@Autowired
 	public CatalogBusinessService(CatalogRepository repository, Messages messages,
 			FeatureTogglesInfo featureToggles, RatingCalculator ratingCalculator, CqnAnalyzer analyzer,
-			BookEmbeddingService embeddingService, RagAiClient aiClient, ObjectMapper objectMapper,
+			BookEmbeddingService embeddingService, @Qualifier("openAiClient") RagAiClient aiClient,
+			@Qualifier("raftClient") RagAiClient raftClient, ObjectMapper objectMapper,
 			RagRetrievalService ragRetrievalService, RagPromptBuilder ragPromptBuilder) {
 		this.repository = repository;
 		this.messages = messages;
@@ -73,6 +77,7 @@ public class CatalogBusinessService {
 		this.ratingCalculator = ratingCalculator;
 		this.embeddingService = embeddingService;
 		this.aiClient = aiClient;
+		this.raftClient = raftClient;
 		this.objectMapper = objectMapper;
 		this.analyzer = analyzer;
 		this.ragRetrievalService = ragRetrievalService;
@@ -83,7 +88,8 @@ public class CatalogBusinessService {
 			FeatureTogglesInfo featureToggles, RatingCalculator ratingCalculator, CqnAnalyzer analyzer,
 			BookEmbeddingService embeddingService, RagAiClient aiClient, ObjectMapper objectMapper,
 			BookshopBooksRepository bookshopBooksRepository, BookContentChunkRepository chunkRepository) {
-		this(repository, messages, featureToggles, ratingCalculator, analyzer, embeddingService, aiClient, objectMapper,
+		this(repository, messages, featureToggles, ratingCalculator, analyzer, embeddingService, aiClient, aiClient,
+				objectMapper,
 				new RagRetrievalService(aiClient, bookshopBooksRepository, chunkRepository), new RagPromptBuilder());
 	}
 
@@ -219,6 +225,51 @@ public class CatalogBusinessService {
 
 			if (!bookIds.isEmpty()) {
 				resultBooks = repository.getChatResultBooks(bookIds);
+			}
+		}
+
+		return chatResult(reply, resultBooks, needsVectorSearch);
+	}
+
+	public ChatResult handleChatFt(ChatFtContext context) {
+		String message = context.getMessage();
+		if (message == null || message.isBlank()) {
+			logger.debug("Chat FT request rejected because message was empty.");
+			return chatResult("Please enter a question.", List.of(), false);
+		}
+
+		List<Map<String, Object>> historyTurns = parseHistory(context.getHistory());
+
+		// RAFT Mode: No vector retrieval, just direct LLM call
+		var messages = ragPromptBuilder.buildMessages(historyTurns, message, List.of());
+		String raw = raftClient.chat(messages);
+
+		if (raw == null || raw.isBlank()) {
+			return chatResult("Assistant is currently unavailable.", List.of(), false);
+		}
+
+		ChatPayload payload = parsePayload(raw);
+		String reply = payload.reply().isBlank() ? raw : payload.reply();
+		boolean needsVectorSearch = payload.vectorSearch();
+		List<ChatResultBook> resultBooks = List.of();
+
+		if (needsVectorSearch) {
+			// RAFT Mode with search: Perform vector search to find relevant books for the
+			// UI
+			String queryText = ragPromptBuilder.buildQueryText(message, historyTurns);
+			double[] vector = ragRetrievalService.embedForQuery(queryText.isBlank() ? message : queryText);
+			List<TextSegment> allContexts = ragRetrievalService.similaritySearch(vector, 0.3);
+
+			if (!allContexts.isEmpty()) {
+				List<String> bookIds = allContexts.stream()
+						.map(s -> s.metadata().getString("bookId"))
+						.filter(id -> id != null && !id.isBlank())
+						.distinct()
+						.toList();
+
+				if (!bookIds.isEmpty()) {
+					resultBooks = repository.getChatResultBooks(bookIds);
+				}
 			}
 		}
 

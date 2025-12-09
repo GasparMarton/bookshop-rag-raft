@@ -28,8 +28,8 @@ service CatalogService @(requires: 'any') {
 
     type ChatResultBook {
         ID             : UUID;
-        title          : localized String(111);
-        descr          : localized String(1111);
+        title          : String(111);
+        descr          : String(1111);
         author_ID      : UUID;
         author_name    : String(111);
         genre_ID       : UUID;
@@ -49,6 +49,9 @@ service CatalogService @(requires: 'any') {
     // Conversational action: always returns text; may also return matching books
     // 'history' is a JSON string of [{ role: 'user'|'assistant', content: String }]
     action chat(message : String, history : String) returns ChatResult;
+    
+    // RAFT action: only returns text; no vector search
+    action chatFt(message : String, history : String) returns ChatResult;
 
     // access control restrictions
     annotate Reviews with @restrict : [

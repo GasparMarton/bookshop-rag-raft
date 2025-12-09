@@ -10,6 +10,7 @@ sap.ui.define([
   let panelElement = null;
   let hashChangeHandler = null;
   let visibilityInterval = null;
+  let useRaft = false;
 
   function el(tag, attrs, ...children) {
     const node = document.createElement(tag);
@@ -78,10 +79,20 @@ sap.ui.define([
     panelElement = el('div', { id: 'bs-chat-panel' },
       el('div', { id: 'bs-chat-header' },
         el('span', null, 'Assistant'),
-        el('button', { title: 'Close', style: { background: 'transparent', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '18px' } }, 'x')
+        el('div', { style: { display: 'flex', gap: '10px' } },
+          el('button', { id: 'bs-chat-clear', title: 'Clear History', style: { background: 'transparent', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '14px' } }, 'Clear'),
+          el('button', { title: 'Close', style: { background: 'transparent', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '18px' } }, 'x')
+        )
       ),
       el('div', { id: 'bs-chat-messages' }),
       el('div', { id: 'bs-chat-input' },
+        el('div', { class: 'bs-chat-mode-switch' },
+          el('label', { class: 'bs-switch' },
+            el('input', { type: 'checkbox', id: 'bs-chat-mode-toggle' }),
+            el('span', { class: 'bs-slider round' })
+          ),
+          el('span', { id: 'bs-chat-mode-label' }, 'RAG')
+        ),
         el('input', { type: 'text', placeholder: 'Ask anything about the books...', id: 'bs-chat-text' }),
         el('button', { id: 'bs-chat-send' }, 'Apply')
       )
@@ -111,6 +122,14 @@ sap.ui.define([
     busyIndicator.style.display = 'none';
     inputBar.appendChild(busyIndicator);
 
+    const modeToggle = panelElement.querySelector('#bs-chat-mode-toggle');
+    const modeLabel = panelElement.querySelector('#bs-chat-mode-label');
+
+    modeToggle.addEventListener('change', (e) => {
+      useRaft = e.target.checked;
+      modeLabel.textContent = useRaft ? 'RAFT' : 'RAG';
+    });
+
     function addMessage(role, text) {
       const msg = el('div', { class: `bs-msg ${role}` }, text);
       const msgArea = panelElement.querySelector('#bs-chat-messages');
@@ -127,6 +146,21 @@ sap.ui.define([
       sendBtn.disabled = isBusy;
     }
 
+    function clearChat() {
+      state.clear();
+      const msgArea = panelElement.querySelector('#bs-chat-messages');
+      // Keep only the typing indicator
+      const children = Array.from(msgArea.children);
+      children.forEach(child => {
+        if (child.id !== 'bs-typing') {
+          msgArea.removeChild(child);
+        }
+      });
+      addMessage('bot', 'History cleared. What would you like to ask?');
+    }
+
+    panelElement.querySelector('#bs-chat-clear').addEventListener('click', clearChat);
+
     async function sendMessage() {
       const content = (textInput.value || '').trim();
       if (!content) return;
@@ -135,7 +169,20 @@ sap.ui.define([
       textInput.value = '';
       setBusy(true);
       try {
-        const { reply, ids, needsVectorSearch } = await ChatClient.callChat(content, state.getHistory());
+        let reply, ids, needsVectorSearch;
+
+        if (useRaft) {
+          const res = await ChatClient.callChatFT(content, state.getHistory());
+          reply = res.reply;
+          ids = res.ids;
+          needsVectorSearch = res.needsVectorSearch;
+        } else {
+          const res = await ChatClient.callChat(content, state.getHistory());
+          reply = res.reply;
+          ids = res.ids;
+          needsVectorSearch = res.needsVectorSearch;
+        }
+
         if (reply) {
           addMessage('bot', reply);
           state.addAssistantMessage(reply);

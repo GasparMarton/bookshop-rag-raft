@@ -1,4 +1,74 @@
 /* Floating chat widget styles */
+/* Switch styles */
+.bs-chat-mode-switch {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.bs-switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+}
+
+.bs-switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.bs-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+.bs-slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  -webkit-transition: .4s;
+  transition: .4s;
+}
+
+input:checked + .bs-slider {
+  background-color: #0a6ed1;
+}
+
+input:focus + .bs-slider {
+  box-shadow: 0 0 1px #0a6ed1;
+}
+
+input:checked + .bs-slider:before {
+  -webkit-transform: translateX(14px);
+  -ms-transform: translateX(14px);
+  transform: translateX(14px);
+}
+
+/* Rounded sliders */
+.bs-slider.round {
+  border-radius: 34px;
+}
+
+.bs-slider.round:before {
+  border-radius: 50%;
+}
 #bs-chat-toggle {
   position: fixed;
   right: 20px;

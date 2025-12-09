@@ -32,7 +32,11 @@ openai:
   base-url: ${external.api.base-url:${OPENAI_BASE_URL:}}
   api-key: ${external.api.key:${OPENAI_API_KEY:}}
   embedding-model: text-embedding-3-small
-  chat-model: gpt-5-nano
+  chat-model: gpt-4o-mini
+google-colab:
+  base-url: ${colab.external.api.base-url:${GOOGLE_COLAB_BASE_URL:}}
+  api-key: ${colab.external.api.key:${GOOGLE_COLAB_API_KEY:}}
+  chat-model: bookshop-llama
 management:
   endpoint:
     health:

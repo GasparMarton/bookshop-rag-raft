@@ -5,6 +5,7 @@ import cds.gen.catalogservice.BooksAddReviewContext;
 import cds.gen.catalogservice.Books_;
 import cds.gen.catalogservice.CatalogService_;
 import cds.gen.catalogservice.ChatContext;
+import cds.gen.catalogservice.ChatFtContext;
 import cds.gen.catalogservice.ChatResult;
 import cds.gen.catalogservice.Reviews;
 import cds.gen.catalogservice.SubmitOrderContext;
@@ -83,6 +84,12 @@ class CatalogServiceHandler implements EventHandler {
 	@On
 	public void onChat(ChatContext context) {
 		ChatResult result = catalogService.handleChat(context);
+		context.setResult(result);
+	}
+
+	@On
+	public void onChatFt(ChatFtContext context) {
+		ChatResult result = catalogService.handleChatFt(context);
 		context.setResult(result);
 	}
 }

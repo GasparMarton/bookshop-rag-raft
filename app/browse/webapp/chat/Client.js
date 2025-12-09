@@ -29,7 +29,36 @@ sap.ui.define([], function () {
     return { reply, ids, needsVectorSearch };
   }
 
+  async function callChatFT(message, history) {
+    const payload = {
+      message,
+      history: JSON.stringify(history || [])
+    };
+    const res = await fetch("/api/browse/chatFt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      throw new Error("chatFT failed");
+    }
+    const data = await res.json();
+    const obj = data && (data.value || data);
+    const reply = obj && obj.reply ? String(obj.reply) : "";
+    let ids = [];
+    if (obj && Array.isArray(obj.ids)) {
+      ids = obj.ids;
+    } else if (obj && Array.isArray(obj.books)) {
+      ids = obj.books
+        .map(function (b) { return b && b.ID; })
+        .filter(function (id) { return !!id; });
+    }
+    const needsVectorSearch = obj && obj.needsVectorSearch === true;
+    return { reply, ids, needsVectorSearch };
+  }
+
   return {
-    callChat: callChat
+    callChat: callChat,
+    callChatFT: callChatFT
   };
 });

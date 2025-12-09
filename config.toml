@@ -1,0 +1,20 @@
+# Project plan for quick setup and usage
+
+[plan]
+name = "Bookshop Dev Plan"
+version = 1
+steps = [
+  "Prereqs: Java 21, Maven >=3.6.3, Node 18, cds",
+  "Build: mvn -q -DskipTests clean install",
+  "Run: mvn -q -pl srv spring-boot:run",
+  "Seed: scripts/fetch-gutenberg-book-and-post.sh 84 --user admin:admin",
+  "Open: http://localhost:8080/fiori.html (user/user or admin/admin)",
+  "Swagger: http://localhost:8080/swagger/index.html"
+]
+
+[env]
+admin_base = "http://localhost:8080/api/admin"
+spring_profile = "default"
+
+[instructions]
+project_goal = "Implement a RAG-powered chat popup on the browse-books page that uses SAP Cloud SDK for AI (Java) to answer user questions with conversation history, retrieved book/domain context, and a clear system prompt."

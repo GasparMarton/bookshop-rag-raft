@@ -13,9 +13,8 @@ import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.output.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
-@Component
+// Removed @Component to allow manual configuration via RagConfiguration
 public class LangChainAiClient implements RagAiClient {
 
 	private static final Logger logger = LoggerFactory.getLogger(LangChainAiClient.class);
@@ -26,25 +25,34 @@ public class LangChainAiClient implements RagAiClient {
 	private final String chatModelName;
 	private final String embeddingModelName;
 
-	public LangChainAiClient(OpenAIProperties properties, AiUsageTracker usageTracker) {
+	public LangChainAiClient(String baseUrl, String apiKey, String chatModelName, String embeddingModelName,
+			AiUsageTracker usageTracker) {
 		this.usageTracker = usageTracker;
-		this.chatModelName = properties.getChatModel();
-		this.embeddingModelName = properties.getEmbeddingModel();
-		String apiKey = properties.getApiKey();
+		this.chatModelName = chatModelName;
+		this.embeddingModelName = embeddingModelName;
 
-		this.chatModel = OpenAiChatModel.builder()
-				.apiKey(apiKey)
-				.baseUrl(properties.getBaseUrl())
-				.modelName(properties.getChatModel())
-				.temperature(1.0)
-				.responseFormat("json_object")
-				.build();
-		this.embeddingModel = OpenAiEmbeddingModel.builder()
-				.apiKey(apiKey)
-				.baseUrl(properties.getBaseUrl())
-				.modelName(properties.getEmbeddingModel())
-				.timeout(Duration.ofSeconds(120))
-				.build();
+		if (chatModelName != null && !chatModelName.isBlank()) {
+			this.chatModel = OpenAiChatModel.builder()
+					.apiKey(apiKey)
+					.baseUrl(baseUrl)
+					.modelName(chatModelName)
+					.temperature(1.0)
+					.responseFormat("json_object")
+					.build();
+		} else {
+			this.chatModel = null;
+		}
+
+		if (embeddingModelName != null && !embeddingModelName.isBlank()) {
+			this.embeddingModel = OpenAiEmbeddingModel.builder()
+					.apiKey(apiKey)
+					.baseUrl(baseUrl)
+					.modelName(embeddingModelName)
+					.timeout(Duration.ofSeconds(120))
+					.build();
+		} else {
+			this.embeddingModel = null;
+		}
 	}
 
 	@Override

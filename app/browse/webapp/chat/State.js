@@ -16,6 +16,9 @@ sap.ui.define([], function () {
         },
         removeLastMessage: function () {
           history.pop();
+        },
+        clear: function () {
+          history.length = 0;
         }
       };
     }

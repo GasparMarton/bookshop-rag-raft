@@ -40,4 +40,6 @@ hs_err*
 
 gutenberg_raw.csv
 
-config.toml
+config.tom
+
+/data/*

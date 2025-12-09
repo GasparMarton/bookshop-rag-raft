@@ -8,8 +8,6 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.input.Prompt;
-import dev.langchain4j.model.input.structured.StructuredPrompt;
-import dev.langchain4j.model.input.structured.StructuredPromptProcessor;
 
 import org.springframework.stereotype.Component;
 
@@ -18,19 +16,12 @@ public class RagPromptBuilder {
 
 	private static final Prompt SYSTEM_PROMPT = Prompt
 			.from("""
-					You are the SAP Bookshop research assistant for the browse-books page.
-					Goals:
-					1. Answer the user's question using the provided context if available.
-					2. Determine if the user is asking for books or recommendations.
-					3. If the user is asking for books, set "vectorSearch" to true. Otherwise, set it to false.
-					Response contract (always valid JSON):
-					{
-					  "reply": "<clear natural-language answer>",
-					  "vectorSearch": <true/false>
-					}
-					Rules:
-					- If vectorSearch is true, the system will search for books and display them in a table. Your reply should introduce these results as if they are already presented to the user (e.g., "Here are some books about space"). Do not say "I will search" or ask for confirmation.
-					- Do not include markdown, code fences, or extra keys.
+					You are a helpful Bookshop Assistant.
+					Answer the customer's question based strictly on the provided context.
+					Keep your response short and concise. Do not offer to place holds, check live stock, or mention real-time availability.
+					Determine if a database search is needed to find relevant books (e.g. if the user asks to find, show, or recommend books).
+					Output your response as a JSON object with keys "reply" (string) and "vectorSearch" (boolean).
+					If "vectorSearch" is true, explicitly state in the reply that you have searched for relevant books.
 					""");
 
 	public List<ChatMessage> buildMessages(List<Map<String, Object>> history, String message,
@@ -39,16 +30,18 @@ public class RagPromptBuilder {
 		messages.add(SYSTEM_PROMPT.toSystemMessage());
 		messages.addAll(toMessages(history));
 
-		StringBuilder contextText = new StringBuilder();
+		String userMessageText = message;
 		if (context != null && !context.isEmpty()) {
-			contextText.append("Context:\n");
+			StringBuilder contextBuilder = new StringBuilder();
+			contextBuilder.append("CONTEXT: ");
 			for (TextSegment segment : context) {
-				contextText.append(segment.text()).append("\n\n");
+				contextBuilder.append(segment.text()).append("\n\n");
 			}
-			contextText.append("\nQuestion: ");
+			contextBuilder.append("QUESTION: ").append(message);
+			userMessageText = contextBuilder.toString();
 		}
 
-		messages.add(buildUserPrompt(contextText.toString() + message).toUserMessage());
+		messages.add(UserMessage.from(userMessageText));
 		return messages;
 	}
 
@@ -89,16 +82,5 @@ public class RagPromptBuilder {
 			}
 		}
 		return messages;
-	}
-
-	private Prompt buildUserPrompt(String question) {
-		return StructuredPromptProcessor.toPrompt(new RagUserPrompt(question));
-	}
-
-	@StructuredPrompt({
-			"User question:",
-			"{{question}}"
-	})
-	private record RagUserPrompt(String question) {
 	}
 }
